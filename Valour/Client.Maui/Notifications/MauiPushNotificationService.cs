@@ -1,4 +1,6 @@
+#if ANDROID
 using Plugin.Firebase.CloudMessaging;
+#endif
 using Valour.Client.Components.Notifications;
 using Valour.Client.Notifications;
 using Valour.Sdk.Client;
@@ -7,6 +9,7 @@ using Valour.Shared.Models;
 
 namespace Valour.Client.Maui.Notifications;
 
+#if ANDROID
 public class MauiPushNotificationService : IPushNotificationService
 {
     private readonly ValourClient _client;
@@ -213,3 +216,23 @@ public class MauiPushNotificationService : IPushNotificationService
         return Task.CompletedTask;
     }
 }
+#else
+public class MauiPushNotificationService : IPushNotificationService
+{
+    public Task<PushSubscriptionResult> RequestSubscriptionAsync() =>
+        Task.FromResult(new PushSubscriptionResult { Success = false, Error = "Push notifications are not supported on this platform." });
+
+    public Task UnsubscribeAsync() => Task.CompletedTask;
+
+    public Task<PushSubscriptionResult> GetSubscriptionAsync() =>
+        Task.FromResult(new PushSubscriptionResult { Success = false, Error = "Push notifications are not supported on this platform." });
+
+    public Task<bool> IsNotificationsEnabledAsync() => Task.FromResult(false);
+
+    public Task<string> GetPermissionStateAsync() => Task.FromResult("denied");
+
+    public Task AskForPermissionAsync() => Task.CompletedTask;
+
+    public Task OpenNotificationSettingsAsync() => Task.CompletedTask;
+}
+#endif
