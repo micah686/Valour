@@ -216,6 +216,74 @@ public class MauiPushNotificationService : IPushNotificationService
         return Task.CompletedTask;
     }
 }
+#elif WINDOWS
+public class MauiPushNotificationService : IPushNotificationService
+{
+    private readonly WindowsToastService _toastService;
+
+    public MauiPushNotificationService(WindowsToastService toastService)
+    {
+        _toastService = toastService;
+    }
+
+    public Task<PushSubscriptionResult> RequestSubscriptionAsync()
+    {
+        _toastService.Enable();
+        Preferences.Set("push_subscribed", true);
+
+        return Task.FromResult(new PushSubscriptionResult
+        {
+            Success = true,
+            Subscription = new PushSubscriptionDetails
+            {
+                Endpoint = "windows-local",
+                Key = "",
+                Auth = "",
+            }
+        });
+    }
+
+    public Task UnsubscribeAsync()
+    {
+        _toastService.Disable();
+        Preferences.Set("push_subscribed", false);
+        return Task.CompletedTask;
+    }
+
+    public Task<PushSubscriptionResult> GetSubscriptionAsync()
+    {
+        if (Preferences.Get("push_subscribed", false))
+        {
+            return Task.FromResult(new PushSubscriptionResult
+            {
+                Success = true,
+                Subscription = new PushSubscriptionDetails
+                {
+                    Endpoint = "windows-local",
+                    Key = "",
+                    Auth = "",
+                }
+            });
+        }
+
+        return Task.FromResult(new PushSubscriptionResult
+        {
+            Success = false,
+            Error = "Notifications not enabled"
+        });
+    }
+
+    public Task<bool> IsNotificationsEnabledAsync()
+    {
+        return Task.FromResult(Preferences.Get("push_subscribed", false));
+    }
+
+    public Task<string> GetPermissionStateAsync() => Task.FromResult("granted");
+
+    public Task AskForPermissionAsync() => Task.CompletedTask;
+
+    public Task OpenNotificationSettingsAsync() => Task.CompletedTask;
+}
 #else
 public class MauiPushNotificationService : IPushNotificationService
 {

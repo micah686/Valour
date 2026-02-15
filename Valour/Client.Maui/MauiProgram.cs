@@ -47,6 +47,10 @@ public static class MauiProgram
             webView.SetWebChromeClient(new AudioPermissionChromeClient());
         });
 #endif
+
+#if WINDOWS
+        builder.Services.AddSingleton<WindowsToastService>();
+#endif
         builder.Services.AddSingleton<IAppStorage, MauiStorageService>();
         builder.Services.AddSingleton<IPushNotificationService, MauiPushNotificationService>();
         builder.Services.AddValourClientServices("https://app.valour.gg");
