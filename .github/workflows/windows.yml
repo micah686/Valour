@@ -46,8 +46,8 @@ jobs:
       with:
         dotnet-version: 10.0.x
 
-    - name: Install MAUI workload
-      run: dotnet workload install maui-windows
+    - name: Install MAUI workloads
+      run: dotnet workload install maui-windows maui-android
 
     - name: Get short SHA
       id: short-sha
