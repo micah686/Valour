@@ -1,3 +1,4 @@
+using Valour.Server.Email;
 using Valour.Shared;
 using Valour.Shared.Models;
 using Valour.Shared.Models.Staff;
@@ -161,6 +162,44 @@ public class StaffService
         await _db.SaveChangesAsync();
 
         return TaskResult.SuccessResult;
+    }
+
+    public async Task<TaskResult> SendMassEmailAsync(string subject, string htmlBody)
+    {
+        var emails = await _db.PrivateInfos
+            .Where(x => x.Verified)
+            .Select(x => x.Email)
+            .ToListAsync();
+
+        if (emails.Count == 0)
+            return TaskResult.FromFailure("No verified emails found.");
+
+        var wrappedHtml = $@"<body style='font-family: Ubuntu, Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f4f4;'>
+            <div style='max-width: 600px; margin: 20px auto; background-color: #fff; padding: 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);'>
+                <img src='https://valour.gg/media/logo/logo-64.png' alt='Valour Logo' style='max-width: 100%; height: auto; display: block; margin: 0 auto;'>
+                <h1 style='color: #333;'>{subject}</h1>
+                {htmlBody}
+                <p style='color: #666;'>— Valour Team</p>
+            </div>
+        </body>";
+
+        var sent = 0;
+        foreach (var email in emails)
+        {
+            try
+            {
+                await EmailManager.SendEmailAsync(email, subject, htmlBody, wrappedHtml);
+                sent++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send mass email to {Email}", email);
+            }
+        }
+
+        _logger.LogInformation("Mass email sent to {Sent}/{Total} verified users.", sent, emails.Count);
+
+        return TaskResult.FromSuccess($"Email sent to {sent} of {emails.Count} verified users.");
     }
 
     public async Task<TaskResult> VerifyUserByIdentifierAsync(string identifier)
