@@ -6,6 +6,7 @@ using StackExchange.Redis;
 using Valour.Config.Configs;
 using Valour.Server.Hubs;
 using Valour.Server.Redis;
+using Valour.Shared.Models;
 
 namespace Valour.Server.Services;
 
