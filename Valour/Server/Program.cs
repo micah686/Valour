@@ -97,7 +97,7 @@ public partial class Program
         // Add API routes
         BaseAPI.AddRoutes(app);
         EmbedAPI.AddRoutes(app);
-        OauthAPI.AddRoutes(app);
+        OauthAppApi.StartCodeCleanupTask();
         VoiceSignallingApi.AddRoutes(app);
         
         // s3 (r2) setup

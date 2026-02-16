@@ -16,7 +16,12 @@ public partial class MainPage : ContentPage
         };
         blazorWebView.UrlLoading += (s, e) =>
         {
-            System.Diagnostics.Debug.WriteLine($"URL loading: {e.Url}");
+            // External URLs must be opened in the system browser.
+            // Without this, all link clicks are silently swallowed by the WebView.
+            if (e.Url.Host != "0.0.0.0")
+            {
+                e.UrlLoadingStrategy = Microsoft.AspNetCore.Components.WebView.UrlLoadingStrategy.OpenExternally;
+            }
         };
     }
 }

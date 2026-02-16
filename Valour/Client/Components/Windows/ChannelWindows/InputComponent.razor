@@ -295,14 +295,19 @@
         _thisRef?.Dispose();
         DetachEmojiPlanetSubscription();
 
-        if (_jsCtx is not null)
+        try
         {
-            await _jsCtx.InvokeVoidAsync("cleanup");
-            await _jsCtx.DisposeAsync();
-        }
+            if (_jsCtx is not null)
+            {
+                await _jsCtx.InvokeVoidAsync("cleanup");
+                await _jsCtx.DisposeAsync();
+            }
 
-        if (_jsModule is not null)
-            await _jsModule.DisposeAsync();
+            if (_jsModule is not null)
+                await _jsModule.DisposeAsync();
+        }
+        catch (JSDisconnectedException) { }
+        catch (JSException) { }
     }
 
     public async Task NotifyChannelLoadedAsync()

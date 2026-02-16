@@ -314,11 +314,19 @@ public class UploadApi
         var result = await UploadPublicImageVariants(bucketService, image, "profiles", authToken.UserId.ToString(), ProfileBackgroundSizes, 0, false, false);
         if (!result.Success)
             return ValourResult.Problem(result.Message);
-        
+
         var resultPath = result.Message;
-        
+
         var fullPath = "https://public-cdn.valour.gg/valour-public/" + resultPath;
-        
+
+        // Update the profile's background image in the database
+        var profile = await db.UserProfiles.FindAsync(authToken.UserId);
+        if (profile is not null)
+        {
+            profile.BackgroundImage = fullPath;
+            await db.SaveChangesAsync();
+        }
+
         return ValourResult.Ok(fullPath);
     }
     

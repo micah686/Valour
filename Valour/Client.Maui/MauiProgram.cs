@@ -44,6 +44,7 @@ public static class MauiProgram
         {
             var webView = handler.PlatformView;
             webView.Settings.MediaPlaybackRequiresUserGesture = false;
+            webView.Settings.SetSupportMultipleWindows(true);
             webView.SetWebChromeClient(new AudioPermissionChromeClient());
         });
 #endif
