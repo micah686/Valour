@@ -84,7 +84,7 @@ namespace Valour.Database.Migrations
                     symbol text,
                     issued bigint NOT NULL,
                     decimal_places integer NOT NULL,
-                    xmin xid NOT NULL
+                    row_version xid NOT NULL
                 );
 
                 CREATE TABLE IF NOT EXISTS node_stats (
@@ -415,7 +415,7 @@ namespace Valour.Database.Migrations
                     planet_member_id bigint,
                     currency_id bigint NOT NULL,
                     balance_value numeric NOT NULL,
-                    xmin xid NOT NULL
+                    row_version xid NOT NULL
                 );
 
                 CREATE TABLE IF NOT EXISTS messages (

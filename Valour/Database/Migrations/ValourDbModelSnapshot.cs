@@ -438,7 +438,7 @@ namespace Valour.Database.Migrations
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("xid")
-                        .HasColumnName("xmin");
+                        .HasColumnName("row_version");
 
                     b.Property<string>("ShortCode")
                         .HasColumnType("text")
@@ -490,7 +490,7 @@ namespace Valour.Database.Migrations
                         .IsConcurrencyToken()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("xid")
-                        .HasColumnName("xmin");
+                        .HasColumnName("row_version");
 
                     b.Property<long>("UserId")
                         .HasColumnType("bigint")
