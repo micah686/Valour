@@ -79,6 +79,9 @@ jobs:
         -f net10.0-windows10.0.19041.0
         -c Release
         -o ./artifacts/windows
+        -r win-x64
+        --self-contained true
+        -p:WindowsAppSDKSelfContained=true
 
     # TODO: Enable once SSL.com cert is validated and eSigner is enrolled
     # - name: Sign executable
@@ -89,7 +92,7 @@ jobs:
     #     password: ${{ secrets.ES_PASSWORD }}
     #     credential_id: ${{ secrets.ES_CREDENTIAL_ID }}
     #     totp_secret: ${{ secrets.ES_TOTP_SECRET }}
-    #     file_path: ./artifacts/windows/Valour.Client.Maui.exe
+    #     file_path: ./artifacts/windows/Valour.exe
 
     - name: Zip artifacts
       shell: pwsh
