@@ -32,6 +32,10 @@
     <ProjectReference Include="..\Shared\Valour.Shared.csproj" />
   </ItemGroup>
 
+  <PropertyGroup Condition="!$([MSBuild]::IsOSPlatform('windows'))">
+    <PrepareForBuildDependsOn>GetTypeScriptOutputForPublishing;$(PrepareForBuildDependsOn)</PrepareForBuildDependsOn>
+  </PropertyGroup>
+
   <ItemGroup>
     <TypeScriptCompile Remove="wwwroot\blazorTypes.ts" />
     <TypeScriptCompile Remove="Components\Menus\Modals\Users\Edit\EditWalletComponent.razor.ts" />
