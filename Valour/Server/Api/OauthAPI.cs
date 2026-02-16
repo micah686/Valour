@@ -81,7 +81,7 @@ public class OauthAPI : BaseAPI
         }
     }
 
-    public static async Task<object> Authorize(
+    public static async Task<IResult> Authorize(
         ValourDb db, HttpContext context,
         TokenService tokenService,
         [FromBody] AuthorizeModel model,
@@ -182,39 +182,31 @@ public class OauthAPI : BaseAPI
 
     }
 
-    public static async Task DeleteApp(HttpContext context, ValourDb db, ulong app_id, TokenService tokenService, [FromHeader] string authorization)
+    public static async Task<IResult> DeleteApp(HttpContext context, ValourDb db, ulong app_id, TokenService tokenService, [FromHeader] string authorization)
     {
         var authToken = await tokenService.GetCurrentTokenAsync();
 
         if (authToken is null)
-        {
-            await Unauthorized("Include token", context);
-            return;
-        }
+            return ValourResult.InvalidToken();
 
         var app = await db.OauthApps.FindAsync(app_id);
 
         if (app.OwnerId != authToken.UserId)
-        {
-            await Unauthorized("You do not own this app!", context);
-            return;
-        }
+            return ValourResult.Forbid("You do not own this app!");
 
         db.Remove(app);
         await db.SaveChangesAsync();
+        return Results.Ok();
     }
 
-    public static async Task GetApps(HttpContext context, ValourDb db, TokenService tokenService, [FromHeader] string authorization)
+    public static async Task<IResult> GetApps(HttpContext context, ValourDb db, TokenService tokenService, [FromHeader] string authorization)
     {
         var authToken = await tokenService.GetCurrentTokenAsync();
 
         if (authToken is null)
-        {
-            await Unauthorized("Include token", context);
-            return;
-        }
+            return ValourResult.InvalidToken();
 
-        var apps = db.OauthApps.Where(x => x.OwnerId == authToken.UserId);
+        var apps = await db.OauthApps.Where(x => x.OwnerId == authToken.UserId).ToListAsync();
 
         foreach (var app in apps)
         {
@@ -225,8 +217,7 @@ public class OauthAPI : BaseAPI
             }
         }
 
-        context.Response.StatusCode = 200;
-        await context.Response.WriteAsJsonAsync(apps);
+        return Results.Json(apps);
     }
 
     public static async Task<IResult> GetApp(HttpContext context, ValourDb db, TokenService tokenService, long app_id,

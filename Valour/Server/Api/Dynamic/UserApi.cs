@@ -31,13 +31,14 @@ public class UserApi
     
     [ValourRoute(HttpVerbs.Get, "api/users/ping")]
     [UserRequired]
-    public static async Task PingOnlineAsync(
+    public static async Task<IResult> PingOnlineAsync(
         UserOnlineQueueService onlineQueue,
         UserService userService,
         [FromQuery] bool isMobile = false)
     {
         var userId = await userService.GetCurrentUserIdAsync();
         onlineQueue.Enqueue(userId, isMobile);
+        return Results.Ok();
     }
 
     [ValourRoute(HttpVerbs.Get, "api/users/{id}")]
