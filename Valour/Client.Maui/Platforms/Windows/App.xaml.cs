@@ -1,11 +1,20 @@
 using Microsoft.UI.Xaml;
 using WinUiControls = Microsoft.UI.Xaml.Controls;
 using H.NotifyIcon;
+using System.Diagnostics;
+using System.Threading;
 
 namespace Valour.Client.Maui.WinUI;
 
 public partial class App : MauiWinUIApplication
 {
+    private const string SingleInstanceMutexName = @"Local\Valour.Client.Maui.Windows.Singleton";
+    private const string ShowWindowEventName = @"Local\Valour.Client.Maui.Windows.ShowWindow";
+
+    private static Mutex? _singleInstanceMutex;
+    private static EventWaitHandle? _showWindowEvent;
+    private static Thread? _showWindowListenerThread;
+
     private TaskbarIcon? _trayIcon;
     private Microsoft.UI.Xaml.Window? _mauiWindow;
     private Microsoft.UI.Windowing.AppWindow? _appWindow;
@@ -20,6 +29,13 @@ public partial class App : MauiWinUIApplication
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        if (!TryBecomePrimaryInstance())
+        {
+            SignalPrimaryInstanceToShow();
+            ForceExitProcess();
+            return;
+        }
+
         base.OnLaunched(args);
 
         var window = Microsoft.Maui.MauiWinUIApplication.Current.Application.Windows[0];
@@ -46,6 +62,7 @@ public partial class App : MauiWinUIApplication
         }
 
         SetupTrayIcon();
+        StartShowWindowSignalListener();
     }
 
     private void SetupTrayIcon()
@@ -91,12 +108,14 @@ public partial class App : MauiWinUIApplication
         // Right-click context menu
         var menu = new WinUiControls.MenuFlyout();
         var showItem = new WinUiControls.MenuFlyoutItem { Text = "Show Valour" };
+        showItem.Command = new RelayCommand(ShowWindow);
         showItem.Click += (_, _) => ShowWindow();
         menu.Items.Add(showItem);
 
         menu.Items.Add(new WinUiControls.MenuFlyoutSeparator());
 
         var exitItem = new WinUiControls.MenuFlyoutItem { Text = "Exit" };
+        exitItem.Command = new RelayCommand(ExitApplication);
         exitItem.Click += (_, _) => ExitApplication();
         menu.Items.Add(exitItem);
 
@@ -117,21 +136,200 @@ public partial class App : MauiWinUIApplication
 
     private void ExitApplication()
     {
+        if (_isExiting)
+        {
+            return;
+        }
+
         _isExiting = true;
 
-        _trayIcon?.Dispose();
-        _trayIcon = null;
+        void Shutdown()
+        {
+            try
+            {
+                _trayIcon?.Dispose();
+                _trayIcon = null;
+            }
+            catch
+            {
+                // Best-effort cleanup
+            }
+
+            try
+            {
+                Microsoft.Toolkit.Uwp.Notifications.ToastNotificationManagerCompat.Uninstall();
+            }
+            catch
+            {
+                // Best-effort cleanup
+            }
+
+            try
+            {
+                _appWindow?.Destroy();
+            }
+            catch
+            {
+                // Best-effort cleanup
+            }
+
+            try
+            {
+                _showWindowEvent?.Set();
+            }
+            catch
+            {
+                // Best-effort cleanup
+            }
+
+            try
+            {
+                _showWindowEvent?.Dispose();
+                _showWindowEvent = null;
+            }
+            catch
+            {
+                // Best-effort cleanup
+            }
+
+            try
+            {
+                _singleInstanceMutex?.ReleaseMutex();
+            }
+            catch
+            {
+                // Ignore if not owned or already released
+            }
+
+            try
+            {
+                _singleInstanceMutex?.Dispose();
+                _singleInstanceMutex = null;
+            }
+            catch
+            {
+                // Best-effort cleanup
+            }
+
+            ForceExitProcess();
+        }
+
+        var dispatcher = _mauiWindow?.DispatcherQueue;
+        if (dispatcher is not null && !dispatcher.HasThreadAccess)
+        {
+            if (dispatcher.TryEnqueue(Shutdown))
+            {
+                return;
+            }
+        }
+
+        Shutdown();
+    }
+
+    private static bool TryBecomePrimaryInstance()
+    {
+        if (_singleInstanceMutex is not null)
+        {
+            return true;
+        }
 
         try
         {
-            Microsoft.Toolkit.Uwp.Notifications.ToastNotificationManagerCompat.Uninstall();
+            _singleInstanceMutex = new Mutex(initiallyOwned: true, name: SingleInstanceMutexName, createdNew: out var createdNew);
+            if (!createdNew)
+            {
+                _singleInstanceMutex.Dispose();
+                _singleInstanceMutex = null;
+                return false;
+            }
+
+            _showWindowEvent = new EventWaitHandle(initialState: false, mode: EventResetMode.AutoReset, name: ShowWindowEventName);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(ex);
+            return true;
+        }
+    }
+
+    private static void SignalPrimaryInstanceToShow()
+    {
+        try
+        {
+            using var showEvent = EventWaitHandle.OpenExisting(ShowWindowEventName);
+            showEvent.Set();
         }
         catch
         {
-            // Best-effort cleanup
+            // No existing signal handle available.
+        }
+    }
+
+    private void StartShowWindowSignalListener()
+    {
+        var showWindowEvent = _showWindowEvent;
+        if (showWindowEvent is null || _showWindowListenerThread is not null)
+        {
+            return;
         }
 
-        _appWindow?.Destroy();
+        _showWindowListenerThread = new Thread(() =>
+        {
+            while (!_isExiting)
+            {
+                try
+                {
+                    showWindowEvent.WaitOne();
+                    if (_isExiting)
+                    {
+                        return;
+                    }
+
+                    _mauiWindow?.DispatcherQueue.TryEnqueue(ShowWindow);
+                }
+                catch
+                {
+                    return;
+                }
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "ValourShowWindowSignalListener"
+        };
+
+        _showWindowListenerThread.Start();
+    }
+
+    private static void ForceExitProcess()
+    {
+        try
+        {
+            Microsoft.UI.Xaml.Application.Current.Exit();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(ex);
+        }
+
+        try
+        {
+            Environment.Exit(0);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(ex);
+        }
+
+        try
+        {
+            Process.GetCurrentProcess().Kill(true);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(ex);
+        }
     }
 
     private class RelayCommand : System.Windows.Input.ICommand
