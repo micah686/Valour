@@ -144,6 +144,7 @@ public partial class Program
             new DynamicAPI<PermissionsNodeApi>().RegisterRoutes(app),
             new DynamicAPI<AutomodApi>().RegisterRoutes(app),
             new DynamicAPI<UserFriendApi>().RegisterRoutes(app),
+            new DynamicAPI<UserBlockApi>().RegisterRoutes(app),
             new DynamicAPI<OauthAppApi>().RegisterRoutes(app),
             new DynamicAPI<TenorFavoriteApi>().RegisterRoutes(app),
             new DynamicAPI<EcoApi>().RegisterRoutes(app),
@@ -158,7 +159,7 @@ public partial class Program
             new DynamicAPI<UnreadApi>().RegisterRoutes(app),
             new DynamicAPI<TagApi>().RegisterRoutes(app),
             new DynamicAPI<BotApi>().RegisterRoutes(app),
-            new DynamicAPI<UnsubscribeApi>().RegisterRoutes(app)
+            new DynamicAPI<UnsubscribeApi>().RegisterRoutes(app),
         };
 
         NodeAPI = new NodeAPI();
@@ -360,6 +361,7 @@ public partial class Program
         services.AddScoped<BotService>();
         services.AddScoped<TokenService>();
         services.AddScoped<UserFriendService>();
+        services.AddScoped<UserBlockService>();
         services.AddScoped<UserService>();
         services.AddScoped<UnreadService>();
         services.AddScoped<EcoService>();

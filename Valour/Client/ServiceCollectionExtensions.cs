@@ -40,6 +40,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton(client.AuthService);
         services.AddSingleton(client.ChannelStateService);
         services.AddSingleton(client.FriendService);
+        services.AddSingleton(client.BlockService);
         services.AddSingleton(client.MessageService);
         services.AddSingleton(client.NodeService);
         services.AddSingleton(client.PlanetService);

@@ -144,6 +144,11 @@ public class Channel : ClientPlanetModel<Channel, long>, ISharedChannel
     public bool IsDefault { get; set; }
 
     /// <summary>
+    /// If this channel is marked as NSFW
+    /// </summary>
+    public bool Nsfw { get; set; }
+
+    /// <summary>
     /// Used to limit typing updates
     /// </summary>
     private DateTime _lastTypingUpdateSend = DateTime.UtcNow;

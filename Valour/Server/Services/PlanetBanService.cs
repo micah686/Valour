@@ -41,12 +41,21 @@ public class PlanetBanService
         if (ban.IssuerId != member.UserId)
             return new(false, "IssuerId should match user Id.");
 
-        if (ban.TargetId == member.Id)
+        if (ban.TargetId == member.UserId)
             return new(false, "You cannot ban yourself.");
 
-        // Ensure it doesn't already exist
-        if (await _db.PlanetBans.AnyAsync(x => x.PlanetId == ban.PlanetId && x.TargetId == ban.TargetId))
-            return new(false, "Ban already exists for user.");
+        // Check for existing ban
+        var existingBan = await _db.PlanetBans.FirstOrDefaultAsync(x => x.PlanetId == ban.PlanetId && x.TargetId == ban.TargetId);
+        if (existingBan is not null)
+        {
+            // If the existing ban is still active, reject
+            if (existingBan.TimeExpires == null || existingBan.TimeExpires > DateTime.UtcNow)
+                return new(false, "Ban already exists for user.");
+
+            // Expired ban — remove it so we can create a fresh one
+            _db.PlanetBans.Remove(existingBan);
+            await _db.SaveChangesAsync();
+        }
 
         var target = await _db.PlanetMembers.FirstOrDefaultAsync(x => x.UserId == ban.TargetId && x.PlanetId == ban.PlanetId);
 

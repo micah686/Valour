@@ -78,7 +78,12 @@ public class Channel : ISharedChannel
     /// True if this is the default chat channel
     /// </summary>
     public bool IsDefault { get; set; }
-    
+
+    /// <summary>
+    /// If this channel is marked as NSFW
+    /// </summary>
+    public bool Nsfw { get; set; }
+
     // Used for migrations
     public int Version { get; set; }
 
@@ -129,7 +134,10 @@ public class Channel : ISharedChannel
             
             e.Property(x => x.IsDefault)
                 .HasColumnName("is_default");
-            
+
+            e.Property(x => x.Nsfw)
+                .HasColumnName("nsfw");
+
             e.Property(x => x.Version)
                 .HasColumnName("version");
             

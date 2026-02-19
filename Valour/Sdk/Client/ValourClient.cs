@@ -35,6 +35,7 @@ public class ValourClient
     public readonly UserService UserService;
     public readonly ChannelStateService ChannelStateService;
     public readonly FriendService FriendService;
+    public readonly BlockService BlockService;
     public readonly MessageService MessageService;
     public readonly NodeService NodeService;
     public readonly PlanetService PlanetService;
@@ -110,6 +111,7 @@ public class ValourClient
         NodeService = new NodeService(this);
         UserService = new UserService(this);
         FriendService = new FriendService(this);
+        BlockService = new BlockService(this);
         MessageService = new MessageService(this);
         PlanetService = new PlanetService(this);
         ChannelService = new ChannelService(this);
@@ -194,6 +196,7 @@ public class ValourClient
         {
             // LoadChannelStatesAsync(), this is already done by the Home component
             FriendService.FetchFriendsAsync(),
+            BlockService.FetchBlocksAsync(),
             PlanetService.FetchJoinedPlanetsAsync(),
             TenorService.LoadTenorFavoritesAsync(),
             ChannelService.LoadDmChannelsAsync(),

@@ -126,4 +126,9 @@ public interface ISharedChannel : ISharedModel<long>, ISortable
     /// If this channel is the default channel
     /// </summary>
     bool IsDefault { get; set; }
+
+    /// <summary>
+    /// If this channel is marked as NSFW
+    /// </summary>
+    bool Nsfw { get; set; }
 }

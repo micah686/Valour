@@ -15,26 +15,27 @@ public class MessageApi
     [ValourRoute(HttpVerbs.Post, "api/messages")]
     [UserRequired(UserPermissionsEnum.Messages)]
     public static async Task<IResult> PostMessageRouteAsync(
-        [FromBody] Message? message, 
+        [FromBody] Message? message,
         MessageService messageService,
         ChannelService channelService,
         PlanetMemberService memberService,
         TokenService tokenService,
         PlanetRoleService roleService,
-        PlanetEmojiService planetEmojiService)
+        PlanetEmojiService planetEmojiService,
+        UserBlockService userBlockService)
     {
         var token = await tokenService.GetCurrentTokenAsync();
         var userId = token.UserId;
 
         if (message is null)
             return ValourResult.BadRequest("Include message in body");
-        
+
         message.AuthorUserId = userId;
 
         var channel = await channelService.GetChannelAsync(message.PlanetId, message.ChannelId);
         if (channel is null)
             return ValourResult.NotFound("Channel not found");
-        
+
         if (!await channelService.HasAccessAsync(channel, userId))
             return ValourResult.Forbid("You are not a member of this channel");
 
@@ -43,6 +44,15 @@ public class MessageApi
             if (!token.HasScope(UserPermissions.DirectMessages))
             {
                 return ValourResult.Forbid("Token lacks permission for direct messages");
+            }
+
+            // Check for blocks between DM participants
+            var members = await channelService.GetDirectChannelMembersAsync(channel.Id);
+            var otherUser = members?.FirstOrDefault(x => x.Id != userId);
+            if (otherUser is not null)
+            {
+                if (await userBlockService.IsBlockedEitherWayAsync(userId, otherUser.Id))
+                    return ValourResult.Forbid("Cannot send messages to this user.");
             }
         }
         

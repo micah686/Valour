@@ -64,4 +64,9 @@ public class Channel : ServerModel<long>, ISharedChannel
     /// If this channel is the default channel
     /// </summary>
     public bool IsDefault { get; set; }
+
+    /// <summary>
+    /// If this channel is marked as NSFW
+    /// </summary>
+    public bool Nsfw { get; set; }
 }

@@ -66,6 +66,11 @@ public partial class ValourDb : DbContext
     /// Table for Valour user friends
     /// </summary>
     public DbSet<UserFriend> UserFriends { get; set; }
+
+    /// <summary>
+    /// Table for Valour user blocks
+    /// </summary>
+    public DbSet<UserBlock> UserBlocks { get; set; }
     
     /// <summary>
     /// Table for user Tenor favorites
