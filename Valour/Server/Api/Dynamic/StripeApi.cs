@@ -553,7 +553,12 @@ public class StripeApi
     /// <summary>
     /// Handles checkout.session.completed for subscription mode — initial subscription creation
     /// </summary>
-    private static async Task FulfillSubscriptionSessionAsync(
+    public static Task FulfillSubscriptionSessionAsync(Session session, EcoService ecoService, ValourDb db)
+    {
+        return FulfillSubscriptionSessionAsync(session, ecoService, db, null);
+    }
+
+    public static async Task FulfillSubscriptionSessionAsync(
         Session session,
         EcoService ecoService,
         ValourDb db,
@@ -564,19 +569,19 @@ public class StripeApi
             !metadata.TryGetValue("userId", out var userIdStr) ||
             !metadata.TryGetValue("subType", out var subType))
         {
-            logger.LogWarning("Stripe subscription fulfillment skipped due to missing metadata.");
+            logger?.LogWarning("Stripe subscription fulfillment skipped due to missing metadata.");
             return;
         }
 
         if (!long.TryParse(userIdStr, out var userId))
         {
-            logger.LogWarning("Stripe subscription fulfillment skipped due to invalid user ID metadata.");
+            logger?.LogWarning("Stripe subscription fulfillment skipped due to invalid user ID metadata.");
             return;
         }
 
         if (!UserSubscriptionTypes.TypeMap.TryGetValue(subType, out var subTypeObj))
         {
-            logger.LogWarning("Stripe subscription fulfillment skipped due to unknown subscription type metadata. SubType={SubType}",
+            logger?.LogWarning("Stripe subscription fulfillment skipped due to unknown subscription type metadata. SubType={SubType}",
                 subType);
             return;
         }
@@ -585,7 +590,7 @@ public class StripeApi
         var stripeSubscriptionId = session.SubscriptionId;
         if (string.IsNullOrEmpty(stripeSubscriptionId))
         {
-            logger.LogWarning("Stripe subscription fulfillment skipped because subscription ID was missing.");
+            logger?.LogWarning("Stripe subscription fulfillment skipped because subscription ID was missing.");
             return;
         }
 
@@ -598,7 +603,7 @@ public class StripeApi
         var user = await db.Users.FindAsync(userId);
         if (user is null)
         {
-            logger.LogWarning("Stripe subscription fulfillment skipped because user was not found. UserId={UserId}", userId);
+            logger?.LogWarning("Stripe subscription fulfillment skipped because user was not found. UserId={UserId}", userId);
             return;
         }
 

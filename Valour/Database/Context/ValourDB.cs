@@ -298,6 +298,7 @@ public partial class ValourDb : DbContext
         OldPlanetRoleMember.SetupDbModel(modelBuilder);
         
         CdnBucketItem.SetupDbModel(modelBuilder);
+        Transaction.SetupDbModel(modelBuilder);
     }
 }
 

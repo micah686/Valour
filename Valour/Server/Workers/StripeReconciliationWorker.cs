@@ -63,7 +63,10 @@ public class StripeReconciliationWorker : IHostedService, IDisposable
                         Expand = new List<string> { "metadata" }
                     });
 
-                    await Valour.Server.Api.Dynamic.StripeApi.FulfillSessionAsync(fullSession, ecoService, db, _logger);
+                    if (fullSession.Mode == "subscription")
+                        await Valour.Server.Api.Dynamic.StripeApi.FulfillSubscriptionSessionAsync(fullSession, ecoService, db, _logger);
+                    else
+                        await Valour.Server.Api.Dynamic.StripeApi.FulfillSessionAsync(fullSession, ecoService, db, _logger);
                 }
                 catch (Exception ex)
                 {
