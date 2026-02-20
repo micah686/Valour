@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Valour.Database.Context;
@@ -12,9 +13,11 @@ using Valour.Database.Context;
 namespace Valour.Database.Migrations
 {
     [DbContext(typeof(ValourDb))]
-    partial class ValourDbModelSnapshot : ModelSnapshot
+    [Migration("20260220003725_AddStripeSubscriptionEdits")]
+    partial class AddStripeSubscriptionEdits
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2161,10 +2164,6 @@ namespace Valour.Database.Migrations
                     b.Property<DateTime>("LastCharged")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_charged");
-
-                    b.Property<string>("PendingType")
-                        .HasColumnType("text")
-                        .HasColumnName("pending_type");
 
                     b.Property<int>("Renewals")
                         .HasColumnType("integer")

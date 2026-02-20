@@ -43,6 +43,17 @@ public partial class Program
         // Load configs
         ConfigLoader.LoadConfigs();
 
+        // Initialize Stripe
+        if (StripeConfig.Current?.SecretKey is not null)
+            Stripe.StripeConfiguration.ApiKey = StripeConfig.Current.SecretKey;
+        if (!string.IsNullOrWhiteSpace(StripeConfig.Current?.ApiVersion))
+        {
+            Console.WriteLine(
+                $"Stripe ApiVersion override '{StripeConfig.Current.ApiVersion}' requested in config, " +
+                $"but Stripe.net pins request API version to '{Stripe.StripeConfiguration.ApiVersion}'. " +
+                "Set webhook endpoint/CLI API version on Stripe side.");
+        }
+
         // Initialize Email Manager
         EmailManager.SetupClient();
 
@@ -152,7 +163,7 @@ public partial class Program
             new DynamicAPI<ReportApi>().RegisterRoutes(app),
             new DynamicAPI<UserProfileApi>().RegisterRoutes(app),
             new DynamicAPI<SubscriptionApi>().RegisterRoutes(app),
-            new DynamicAPI<OrderApi>().RegisterRoutes(app),
+            new DynamicAPI<StripeApi>().RegisterRoutes(app),
             new DynamicAPI<ThemeApi>().RegisterRoutes(app),
             new DynamicAPI<StaffApi>().RegisterRoutes(app),
             new DynamicAPI<MessageApi>().RegisterRoutes(app),
@@ -268,8 +279,8 @@ public partial class Program
 
         services.Configure<FormOptions>(options =>
         {
-            options.MemoryBufferThreshold = 20480000;
-            options.MultipartBodyLengthLimit = 20480000;
+            options.MemoryBufferThreshold = 20_971_520; // 20 MB memory buffer before spilling to disk
+            options.MultipartBodyLengthLimit = 262_144_000; // 250 MB (max tier upload limit)
         });
 
         services.AddDbContext<ValourDb>(options => { options.UseNpgsql(ValourDb.ConnectionString); }, ServiceLifetime.Scoped);
@@ -392,6 +403,7 @@ public partial class Program
         services.AddHostedService<UserOnlineWorker>();
         services.AddHostedService<NodeStateWorker>();
         services.AddHostedService<SubscriptionWorker>();
+        services.AddHostedService<StripeReconciliationWorker>();
         services.AddHostedService<MigrationWorker>();
         services.AddEndpointsApiExplorer();
 

@@ -81,15 +81,26 @@ public class UploadApi
     {
         app.MapPost("/upload/profile", AvatarImageRoute);
         app.MapPost("/upload/profilebg", ProfileBackgroundImageRoute);
-        app.MapPost("/upload/image", ImageRouteNonPlus);
-        app.MapPost("/upload/image/plus", ImageRoutePlus);
+        app.MapPost("/upload/image", ImageRoute);
         app.MapPost("/upload/planet/{planetId}", PlanetImageRoute);
         app.MapPost("/upload/planetbg/{planetId}", PlanetBackgroundImageRoute);
         app.MapPost("/upload/planetemoji/{planetId}", PlanetEmojiImageRoute);
         app.MapPost("/upload/app/{appId}", AppImageRoute);
-        app.MapPost("/upload/file", FileRouteNonPlus);
-        app.MapPost("/upload/file/plus", FileRoutePlus);
+        app.MapPost("/upload/file", FileRoute);
         app.MapPost("upload/themeBanner/{themeId}", ThemeBannerRoute);
+    }
+
+    /// <summary>
+    /// Returns the max upload size in bytes for the given user based on their subscription tier.
+    /// </summary>
+    private static async Task<long> GetUserMaxUploadBytes(ValourDb db, long userId)
+    {
+        var subType = await db.UserSubscriptions
+            .Where(x => x.UserId == userId && x.Active)
+            .Select(x => x.Type)
+            .FirstOrDefaultAsync();
+
+        return UserSubscriptionTypes.GetMaxUploadBytes(subType);
     }
 
     public static void HandleExif(Image image)
@@ -113,34 +124,19 @@ public class UploadApi
     }
 
     [FileUploadOperation.FileContentType]
-    [RequestSizeLimit(20480000)]
-    private static async Task<IResult> ImageRoutePlus(HttpContext ctx, ValourDb db, TokenService tokenService, CdnBucketService bucketService, [FromHeader] string authorization)
+    [RequestSizeLimit(262_144_000)] // 250 MB (max tier limit)
+    private static async Task<IResult> ImageRoute(HttpContext ctx, ValourDb db, TokenService tokenService, CdnBucketService bucketService, [FromHeader] string authorization)
     {
         var authToken = await tokenService.GetCurrentTokenAsync();
-        var isPlus = await db.UserSubscriptions.AnyAsync(x => x.UserId == authToken.UserId && x.Active);
-        if (!isPlus)
-            return ValourResult.Forbid("You must be a Valour Plus subscriber to upload images larger than 10MB");
-        
-        return await ImageRoute(ctx, db, bucketService, authToken, authorization);
-    }
-
-    [FileUploadOperation.FileContentType]
-    [RequestSizeLimit(10240000)]
-    private static async Task<IResult> ImageRouteNonPlus(HttpContext ctx, ValourDb  db, TokenService tokenService, CdnBucketService bucketService, [FromHeader] string authorization)
-    {
-        var authToken = await tokenService.GetCurrentTokenAsync();
-        return await ImageRoute(ctx, db, bucketService, authToken, authorization);
-    }
-    
-    [FileUploadOperation.FileContentType]
-    [RequestSizeLimit(10240000)]
-    private static async Task<IResult> ImageRoute(HttpContext ctx, ValourDb db, CdnBucketService bucketService, Models.AuthToken authToken, string authorization)
-    {
         if (authToken is null) return ValourResult.InvalidToken();
 
         var file = ctx.Request.Form.Files.FirstOrDefault();
         if (file is null)
             return Results.BadRequest("Please attach a file");
+
+        var maxBytes = await GetUserMaxUploadBytes(db, authToken.UserId);
+        if (file.Length > maxBytes)
+            return ValourResult.Forbid($"File exceeds your upload limit of {maxBytes / (1024 * 1024)}MB. Upgrade your subscription for larger uploads!");
 
         if (!CdnUtils.ImageSharpSupported.Contains(file.ContentType))
             return Results.BadRequest("Unsupported file type");
@@ -695,32 +691,19 @@ public class UploadApi
     }
 
     [FileUploadOperation.FileContentType]
-    [RequestSizeLimit(20480000)]
-    private static async Task<IResult> FileRoutePlus(HttpContext ctx, ValourDb db, TokenService tokenService, CdnBucketService bucketService, [FromHeader] string authorization)
+    [RequestSizeLimit(262_144_000)] // 250 MB (max tier limit)
+    private static async Task<IResult> FileRoute(HttpContext ctx, ValourDb db, TokenService tokenService, CdnBucketService bucketService, [FromHeader] string authorization)
     {
         var authToken = await tokenService.GetCurrentTokenAsync();
-        var isPlus = await db.UserSubscriptions.AnyAsync(x => x.UserId == authToken.UserId && x.Active);
-        if (!isPlus)
-            return ValourResult.Forbid("You must be a Valour Plus subscriber to upload files larger than 10MB");
-        
-        return await FileRoute(ctx, db, bucketService, authToken, authorization);
-    }
-    
-    [FileUploadOperation.FileContentType]
-    [RequestSizeLimit(10240000)]
-    private static async Task<IResult> FileRouteNonPlus(HttpContext ctx, ValourDb db, TokenService tokenService, CdnBucketService bucketService, [FromHeader] string authorization)
-    {
-        var authToken = await tokenService.GetCurrentTokenAsync();
-        return await FileRoute(ctx, db, bucketService, authToken, authorization);
-    }
-    
-    private static async Task<IResult> FileRoute(HttpContext ctx, ValourDb db, CdnBucketService bucketService, Models.AuthToken authToken, string authorization)
-    {
         if (authToken is null) return ValourResult.InvalidToken();
 
         var file = ctx.Request.Form.Files.FirstOrDefault();
         if (file is null)
             return Results.BadRequest("Please attach a file");
+
+        var maxBytes = await GetUserMaxUploadBytes(db, authToken.UserId);
+        if (file.Length > maxBytes)
+            return ValourResult.Forbid($"File exceeds your upload limit of {maxBytes / (1024 * 1024)}MB. Upgrade your subscription for larger uploads!");
 
         if (CdnUtils.ImageSharpSupported.Contains(file.ContentType))
             return Results.BadRequest("Unsupported file type");
@@ -737,7 +720,7 @@ public class UploadApi
         }
         else
         {
-            return ValourResult.Problem("There was an issue uploading your image. Try a different format or size.");
+            return ValourResult.Problem("There was an issue uploading your file. Try a different format or size.");
         }
     }
 

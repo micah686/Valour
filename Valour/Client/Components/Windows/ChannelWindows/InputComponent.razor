@@ -557,16 +557,14 @@
             FileName = name,
         };
 
-        var plusRoute = Client.Me.SubscriptionType == null ? "" : "/plus";
-
         var modalData = new FileUploadComponent.ModalParams()
         {
             Bytes = bytes,
             Attachment = newAttachment,
             Message = PreviewMessage,
-            OnConfirm = async () => 
+            OnConfirm = async () =>
             {
-                var result = await Client.PrimaryNode.PostMultipartDataWithResponse<string>($"upload/{path}{plusRoute}", content);
+                var result = await Client.PrimaryNode.PostMultipartDataWithResponse<string>($"upload/{path}", content);
 
                 if (result.Success)
                 {
