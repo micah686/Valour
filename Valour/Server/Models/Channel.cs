@@ -69,4 +69,9 @@ public class Channel : ServerModel<long>, ISharedChannel
     /// If this channel is marked as NSFW
     /// </summary>
     public bool Nsfw { get; set; }
+    
+    /// <summary>
+    /// For call channels, the associated chat channel id.
+    /// </summary>
+    public long? AssociatedChatChannelId { get; set; }
 }

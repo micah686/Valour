@@ -37,10 +37,15 @@ public class RealtimeKitService
         !string.IsNullOrWhiteSpace(CloudflareConfig.Instance?.RealtimeAppId) &&
         !string.IsNullOrWhiteSpace(CloudflareConfig.Instance?.RealtimeApiToken);
 
-    private static string PresetName =>
+    private static string VoicePresetName =>
         string.IsNullOrWhiteSpace(CloudflareConfig.Instance?.RealtimePresetName)
             ? "group_call_host"
             : CloudflareConfig.Instance.RealtimePresetName;
+
+    private static string VideoPresetName =>
+        string.IsNullOrWhiteSpace(CloudflareConfig.Instance?.RealtimeVideoPresetName)
+            ? "video_call"
+            : CloudflareConfig.Instance.RealtimeVideoPresetName;
 
     public async Task<TaskResult<RealtimeKitVoiceTokenResponse>> CreateParticipantTokenAsync(
         Channel channel,
@@ -62,7 +67,8 @@ public class RealtimeKitService
             meetingResult.Data,
             customParticipantId,
             displayName,
-            $"{{\"channelId\":\"{channel.Id}\",\"userId\":\"{userId}\"}}");
+            $"{{\"channelId\":\"{channel.Id}\",\"userId\":\"{userId}\"}}",
+            channel.ChannelType);
 
         if (!participantResult.Success)
             return TaskResult<RealtimeKitVoiceTokenResponse>.FromFailure(participantResult);
@@ -132,12 +138,14 @@ public class RealtimeKitService
         string meetingId,
         string customParticipantId,
         string displayName,
-        string metadata)
+        string metadata,
+        ChannelTypeEnum channelType)
     {
         var endpoint = BuildEndpoint($"meetings/{meetingId}/participants");
+        var presetName = channelType == ChannelTypeEnum.PlanetVideo ? VideoPresetName : VoicePresetName;
         var payload = new AddParticipantRequest
         {
-            PresetName = PresetName,
+            PresetName = presetName,
             CustomParticipantId = customParticipantId,
             Name = displayName,
             Metadata = metadata

@@ -294,6 +294,10 @@ namespace Valour.Database.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("channel_type");
 
+                    b.Property<long?>("AssociatedChatChannelId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("associated_chat_channel_id");
+
                     b.Property<string>("Description")
                         .HasColumnType("text")
                         .HasColumnName("description");
@@ -339,6 +343,8 @@ namespace Valour.Database.Migrations
                         .HasColumnName("version");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AssociatedChatChannelId");
 
                     b.HasIndex("IsDeleted");
 

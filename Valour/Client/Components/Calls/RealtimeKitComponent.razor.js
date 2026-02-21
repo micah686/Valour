@@ -6,6 +6,12 @@ const DEFAULT_AUDIO_CONSTRAINTS = {
     autoGainControl: true
 };
 
+const DEFAULT_SCREENSHARE_VIDEO_CONSTRAINTS = {
+    width: { ideal: 1920, max: 3840 },
+    height: { ideal: 1080, max: 2160 },
+    frameRate: { ideal: 30, max: 30 }
+};
+
 const SDK_POLL_INTERVAL_MS = 50;
 const SDK_SCRIPT_PATH = "_content/Valour.Client/js/realtimekit.js";
 let sdkScriptLoadPromise = null;
@@ -238,6 +244,30 @@ async function applyDefaultAudioConstraints(activeMeeting) {
     }
 }
 
+async function applyDefaultScreenShareConstraints(activeMeeting) {
+    const self = activeMeeting?.self;
+    if (!self) {
+        return;
+    }
+
+    try {
+        if (typeof self.updateScreenshareConstraints === "function") {
+            await self.updateScreenshareConstraints(DEFAULT_SCREENSHARE_VIDEO_CONSTRAINTS);
+        }
+    } catch {
+        // SDK may reject manual screenshare updates on some environments.
+    }
+
+    try {
+        const screenShareTrack = self.screenShareTracks?.video ?? self.screenShareTrack ?? null;
+        if (screenShareTrack && typeof screenShareTrack.applyConstraints === "function") {
+            await screenShareTrack.applyConstraints(DEFAULT_SCREENSHARE_VIDEO_CONSTRAINTS);
+        }
+    } catch {
+        // Browser does not support applying these constraints — silently continue.
+    }
+}
+
 function resolveTargetPath(root, path) {
     const segments = path.split('.');
     let current = root;
@@ -316,7 +346,9 @@ export async function disableVideo() {
 
 export async function enableScreenShare() {
     const activeMeeting = getMeetingOrThrow();
+    await applyDefaultScreenShareConstraints(activeMeeting);
     await activeMeeting.self.enableScreenShare();
+    await applyDefaultScreenShareConstraints(activeMeeting);
 }
 
 export async function disableScreenShare() {
@@ -432,10 +464,28 @@ function parseUserIdString(participant) {
     return null;
 }
 
+function getParticipantVideoTrack(participant) {
+    return participant?.videoTrack
+        ?? participant?.videoTracks?.video
+        ?? participant?.videoTracks?.camera
+        ?? null;
+}
+
+function getParticipantScreenShareTrack(participant) {
+    return participant?.screenShareTrack
+        ?? participant?.screenShareTracks?.video
+        ?? participant?.screenshareTrack
+        ?? participant?.screenshareTracks?.video
+        ?? null;
+}
+
 function mapParticipantSnapshot(participant, isSelf = false) {
     if (!participant?.id) {
         return null;
     }
+
+    const videoTrack = getParticipantVideoTrack(participant);
+    const screenShareTrack = getParticipantScreenShareTrack(participant);
 
     return {
         peerId: participant.id,
@@ -448,6 +498,10 @@ function mapParticipantSnapshot(participant, isSelf = false) {
         screenShareEnabled: participant.screenShareEnabled ?? false,
         hasAudioTrack: !!participant.audioTrack,
         audioTrackId: participant.audioTrack?.id ?? null,
+        hasVideoTrack: !!videoTrack,
+        videoTrackId: videoTrack?.id ?? null,
+        hasScreenShareTrack: !!screenShareTrack,
+        screenShareTrackId: screenShareTrack?.id ?? null,
         isSelf
     };
 }
@@ -459,6 +513,15 @@ function getAudioElement(elementId) {
 
     const element = document.getElementById(elementId);
     return element instanceof HTMLAudioElement ? element : null;
+}
+
+function getVideoElement(elementId) {
+    if (typeof document === "undefined") {
+        return null;
+    }
+
+    const element = document.getElementById(elementId);
+    return element instanceof HTMLVideoElement ? element : null;
 }
 
 function getElementAudioTrack(audioElement) {
@@ -536,6 +599,67 @@ export function syncParticipantAudio(elementId, participantId, volume = 1.0) {
     audioElement.volume = Math.max(0, Math.min(1, volume));
 
     const playResult = audioElement.play();
+    if (playResult && typeof playResult.catch === "function") {
+        playResult.catch(() => {
+            // Autoplay restrictions are expected until a user interaction occurs.
+        });
+    }
+}
+
+function getElementVideoTrack(videoElement) {
+    const stream = videoElement?.srcObject;
+    if (!(stream instanceof MediaStream)) {
+        return null;
+    }
+
+    const tracks = stream.getVideoTracks();
+    return tracks.length > 0 ? tracks[0] : null;
+}
+
+function clearVideoElement(videoElement) {
+    if (!(videoElement?.srcObject instanceof MediaStream)) {
+        videoElement.srcObject = null;
+        return;
+    }
+
+    const currentStream = videoElement.srcObject;
+    for (const track of currentStream.getTracks()) {
+        currentStream.removeTrack(track);
+    }
+
+    videoElement.srcObject = null;
+}
+
+export function syncParticipantVideo(elementId, participantId, preferScreenShare = true) {
+    const activeMeeting = getMeetingOrThrow();
+    const videoElement = getVideoElement(elementId);
+    if (!videoElement) {
+        return;
+    }
+
+    const participant = getParticipantById(activeMeeting, participantId);
+    const videoTrack = getParticipantVideoTrack(participant);
+    const screenShareTrack = getParticipantScreenShareTrack(participant);
+    const selectedTrack = preferScreenShare ? screenShareTrack : videoTrack;
+    const shouldRenderTrack = preferScreenShare
+        ? !!screenShareTrack
+        : !!videoTrack && !!participant?.videoEnabled;
+
+    videoElement.autoplay = true;
+    videoElement.playsInline = true;
+    videoElement.muted = true;
+
+    if (!shouldRenderTrack) {
+        clearVideoElement(videoElement);
+        return;
+    }
+
+    const existingTrack = getElementVideoTrack(videoElement);
+    if (!existingTrack || existingTrack.id !== selectedTrack.id) {
+        videoElement.srcObject = new MediaStream([selectedTrack]);
+    }
+
+    const playResult = videoElement.play();
     if (playResult && typeof playResult.catch === "function") {
         playResult.catch(() => {
             // Autoplay restrictions are expected until a user interaction occurs.

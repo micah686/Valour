@@ -408,9 +408,11 @@ public class WindowLayout
     
     public async Task OnChannelDropped(Channel channel, WindowDropTargets.DropLocation location)
     {
-        // Create a new chat window
-        var chatWindow = await ChatWindowComponent.GetDefaultContent(channel);
-        var tab = new WindowTab(chatWindow);
+        var content = await ChannelWindowFactory.GetDefaultContent(channel);
+        if (content is null)
+            return;
+
+        var tab = new WindowTab(content);
         
         if (location == WindowDropTargets.DropLocation.Center)
         {
@@ -428,9 +430,11 @@ public class WindowLayout
 
     public async Task OnChannelDropped(Channel channel, WindowTab droppedOn)
     {
-        // Create a new chat window
-        var chatWindow = await ChatWindowComponent.GetDefaultContent(channel);
-        var tab = new WindowTab(chatWindow);
+        var content = await ChannelWindowFactory.GetDefaultContent(channel);
+        if (content is null)
+            return;
+
+        var tab = new WindowTab(content);
         
         // Use the existing OnTabDropped method to handle the drop
         await OnTabDropped(tab, droppedOn);

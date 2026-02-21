@@ -1,0 +1,184 @@
+@inherits WindowContentComponent<Channel>
+@using Channel = Valour.Sdk.Models.Channel
+
+@if (_loading)
+{
+    <Loading Title="Loading call..." Spin="@true" />
+}
+else if (_callChannel is null)
+{
+    <div class="call-window-empty-state">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <span>Call channel is unavailable.</span>
+    </div>
+}
+else
+{
+    <div class="call-window-layout">
+        <div class="call-window-top">
+            <CallPanelComponent Channel="_callChannel"
+                                VideoMode="@(_callChannel.ChannelType == ChannelTypeEnum.PlanetVideo)"
+                                OnLeaveRequested="OnLeaveRequestedAsync" />
+        </div>
+        <div class="call-window-bottom">
+            @if (_chatChannel is null || _embeddedChatContent is null)
+            {
+                <div class="call-window-empty-state">
+                    <i class="bi bi-chat-dots"></i>
+                    <span>No associated chat channel is available for this call.</span>
+                </div>
+            }
+            else
+            {
+                <ChatWindowComponent WindowCtx="_embeddedChatContent"
+                                     Data="_chatChannel"
+                                     Embedded="true"
+                                     HideHeader="true"
+                                     HideMemberList="true" />
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private Channel? _callChannel;
+    private Channel? _chatChannel;
+    private ChatWindowComponent.Content? _embeddedChatContent;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _callChannel = Data;
+        _chatChannel = null;
+        _embeddedChatContent = null;
+
+        if (_callChannel is null)
+        {
+            _loading = false;
+            return;
+        }
+
+        try
+        {
+            var associatedChatId = _callChannel.AssociatedChatChannelId;
+
+            // Backward compatibility: if older caches don't include the link yet,
+            // try to discover the associated chat by inverse lookup in local cache.
+            if (associatedChatId is null && _callChannel.PlanetId is not null && _callChannel.Planet is not null)
+            {
+                associatedChatId = _callChannel.Planet.Channels
+                    .FirstOrDefault(x => x.AssociatedChatChannelId == _callChannel.Id)
+                    ?.Id;
+            }
+
+            if (associatedChatId is not null)
+            {
+                if (_callChannel.PlanetId is not null)
+                {
+                    if (_callChannel.Planet?.Channels.TryGet(associatedChatId.Value, out var cachedChannel) == true)
+                    {
+                        _chatChannel = cachedChannel;
+                    }
+                    else if (_callChannel.Planet is not null)
+                    {
+                        _chatChannel = await _callChannel.Planet
+                            .FetchChannelAsync(associatedChatId.Value)
+                            .AsTask()
+                            .WaitAsync(TimeSpan.FromSeconds(4));
+                    }
+                }
+                else
+                {
+                    _chatChannel = await _callChannel.Client.ChannelService
+                        .FetchDirectChannelAsync(associatedChatId.Value)
+                        .AsTask()
+                        .WaitAsync(TimeSpan.FromSeconds(4));
+                }
+            }
+
+            if (_chatChannel is not null)
+            {
+                _embeddedChatContent = new ChatWindowComponent.Content
+                {
+                    Icon = await _chatChannel.GetIconAsync(),
+                    Title = await _chatChannel.GetTitleAsync(),
+                    PlanetId = _chatChannel.PlanetId,
+                    AutoScroll = false,
+                    Data = _chatChannel
+                };
+            }
+        }
+        catch
+        {
+            // Keep the window alive; show top call pane and empty chat pane fallback.
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task OnLeaveRequestedAsync()
+    {
+        if (WindowCtx?.Tab?.Component is not null)
+        {
+            await WindowCtx.Tab.Component.CloseAsync();
+        }
+    }
+
+    public class StateData
+    {
+        public long? PlanetId { get; set; }
+        public long ChannelId { get; set; }
+    }
+
+    public class Content : WindowContent<CallWindowComponent, Channel>
+    {
+        public override async Task ImportData(string data, ValourClient client)
+        {
+            var imported = JsonSerializer.Deserialize<StateData>(data);
+            if (imported is null)
+                return;
+
+            if (imported.PlanetId is not null)
+            {
+                var planet = await client.PlanetService.FetchPlanetAsync(imported.PlanetId.Value);
+                Data = await planet.FetchChannelAsync(imported.ChannelId);
+            }
+            else
+            {
+                Data = await client.ChannelService.FetchDirectChannelAsync(imported.ChannelId);
+            }
+        }
+
+        public override string ExportData(ValourClient client)
+        {
+            if (Data is null)
+                return null;
+
+            return JsonSerializer.Serialize(new StateData
+            {
+                PlanetId = Data.PlanetId,
+                ChannelId = Data.Id
+            });
+        }
+    }
+
+    public static async Task<Content> GetDefaultContent(Channel channel)
+    {
+        return new Content
+        {
+            Icon = await channel.GetIconAsync(),
+            Title = await channel.GetTitleAsync(),
+            PlanetId = channel.PlanetId,
+            AutoScroll = false,
+            Data = channel
+        };
+    }
+}

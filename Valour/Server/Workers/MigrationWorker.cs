@@ -147,6 +147,14 @@ public class MigrationWorker : IHostedService
 
         // Migrate channels
         await channelService.MigrateChannels();
+
+        var associatedChatsBackfilled = await channelService.BackfillAssociatedCallChatsAsync();
+        if (associatedChatsBackfilled > 0)
+        {
+            _logger.LogInformation(
+                "Backfilled associated chat channels for {Count} call channels",
+                associatedChatsBackfilled);
+        }
     }
     
     public Task StopAsync(CancellationToken stoppingToken)

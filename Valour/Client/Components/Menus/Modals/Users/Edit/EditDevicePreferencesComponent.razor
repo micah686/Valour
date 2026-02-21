@@ -1,5 +1,6 @@
 @inject IAppStorage LocalStorage
 @inject ValourClient Client
+@inject RealtimeKitDeviceService RealtimeKitDeviceService
 
 <h3>Device Preferences</h3>
 <p class="subtitle">DEVICE + ACCOUNT SETTINGS</p>
@@ -127,29 +128,19 @@
         _micError = null;
         StateHasChanged();
 
-        var callComponent = CallComponent.Instance;
-        if (callComponent is null)
-        {
-            _mics = Array.Empty<InputMic>();
-            _micPermissionState = "unsupported";
-            _isLoadingMics = false;
-            StateHasChanged();
-            return;
-        }
-
         try
         {
             if (requestPermission)
             {
-                var granted = await callComponent.RequestMicrophonePermissionAsync();
+                var granted = await RealtimeKitDeviceService.RequestMicrophonePermissionAsync();
                 if (!granted)
                 {
                     _micError = "Microphone permission was not granted.";
                 }
             }
 
-            _micPermissionState = await callComponent.GetMicrophonePermissionStateAsync();
-            _mics = await callComponent.UpdateMics();
+            _micPermissionState = await RealtimeKitDeviceService.GetMicrophonePermissionStateAsync();
+            _mics = await RealtimeKitDeviceService.GetAudioInputDevicesAsync();
 
             if (_mics.Length == 0)
             {

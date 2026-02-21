@@ -445,6 +445,8 @@ public class PlanetPermissionService
                     effectiveChannel, hostedPlanet, ChannelTypeEnum.PlanetCategory, generation),
                 ChannelTypeEnum.PlanetVoice => await GenerateChannelPermissionsAsync(member.RoleMembership, roles, effectiveChannel,
                     hostedPlanet, ChannelTypeEnum.PlanetVoice, generation),
+                ChannelTypeEnum.PlanetVideo => await GenerateChannelPermissionsAsync(member.RoleMembership, roles, effectiveChannel,
+                    hostedPlanet, ChannelTypeEnum.PlanetVoice, generation),
                 _ => throw new Exception("Invalid channel type!")
             };
 

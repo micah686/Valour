@@ -1,4 +1,5 @@
-﻿using Valour.Client.Components.Windows.ChannelWindows;
+﻿using Valour.Client.Components.Windows.CallWindows;
+using Valour.Client.Components.Windows.ChannelWindows;
 using Valour.Client.Device;
 using Valour.Sdk.Models;
 using Valour.Shared.Utilities;
@@ -100,6 +101,20 @@ public static class WindowService
             var existingTab = GlobalTabs.FirstOrDefault(t =>
                 t.Content is ChatWindowComponent.Content existing &&
                 existing.Data?.Id == chatContent.Data.Id);
+
+            if (existingTab?.Layout is not null)
+            {
+                await existingTab.Layout.SetFocusedTab(existingTab);
+                await existingTab.Layout.DockComponent.NotifyLayoutChanged();
+                return;
+            }
+        }
+        
+        if (content is CallWindowComponent.Content callContent && callContent.Data is not null)
+        {
+            var existingTab = GlobalTabs.FirstOrDefault(t =>
+                t.Content is CallWindowComponent.Content existing &&
+                existing.Data?.Id == callContent.Data.Id);
 
             if (existingTab?.Layout is not null)
             {

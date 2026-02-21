@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Valour.Client.Categories;
+using Valour.Client.Components.Calls;
 using Valour.Client.Components.Sidebar.Directory;
 using Valour.Client.ContextMenu;
 using Valour.Client.Sounds;
@@ -30,6 +31,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<SoundManager>();
         services.AddSingleton<ContextMenuService>();
         services.AddSingleton<INativeWindowService, NoopNativeWindowService>();
+        services.AddSingleton<RealtimeKitDeviceService>();
 
         // new services
         services.AddSingleton(client);
@@ -60,4 +62,3 @@ public static class ServiceCollectionExtensions
         return client;
     }
 }
-

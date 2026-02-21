@@ -281,7 +281,7 @@
 
         foreach (var channel in Planet.Channels)
         {
-            if (channel.ParentId == Channel.Id)
+            if (channel.ParentId == Channel.Id && PlanetComponent.ShouldShowChannel(channel))
                 _children.Add(channel);
         }
     }
@@ -290,20 +290,14 @@
     {
         DragManager.OnItemClickInCategory(this);
 
-        // Chat channels
-        if (ISharedChannel.ChatChannelTypes.Contains(Channel.ChannelType))
+        if (ISharedChannel.ChatChannelTypes.Contains(Channel.ChannelType) ||
+            ISharedChannel.VoiceChannelTypes.Contains(Channel.ChannelType))
         {
-            var newWindowContent = await ChatWindowComponent.GetDefaultContent(Channel);
-            
-            await WindowService.OpenWindowAtFocused(newWindowContent);
-
-            await Sidebar.ToggleSidebar();
-        }
-        else if (ISharedChannel.VoiceChannelTypes.Contains(Channel.ChannelType))
-        {
-            if (CallComponent.Instance is not null)
+            var newWindowContent = await ChannelWindowFactory.GetDefaultContent(Channel);
+            if (newWindowContent is not null)
             {
-                await CallComponent.Instance.Initialize(Channel);
+                await WindowService.OpenWindowAtFocused(newWindowContent);
+                await Sidebar.ToggleSidebar();
             }
         }
         else if (Channel.ChannelType == ChannelTypeEnum.PlanetCategory)
@@ -342,7 +336,17 @@
     {
         if (Channel.ChannelType != ChannelTypeEnum.PlanetCategory)
         {
-            IsUnread = UnreadService.IsChannelUnread(Channel.PlanetId, Channel.Id);
+            if (ISharedChannel.IsPlanetCallType(Channel.ChannelType))
+            {
+                var associatedChatId = GetAssociatedChatChannelId();
+                IsUnread = UnreadService.IsChannelUnread(Channel.PlanetId, Channel.Id) ||
+                           (associatedChatId is not null &&
+                            UnreadService.IsChannelUnread(Channel.PlanetId, associatedChatId.Value));
+            }
+            else
+            {
+                IsUnread = UnreadService.IsChannelUnread(Channel.PlanetId, Channel.Id);
+            }
         }
         else
         {
@@ -362,7 +366,17 @@
 
     private void DetermineNotifications()
     {
-        _notificationCount = NotificationService.GetChannelNotifications(Channel.Id);
+        if (ISharedChannel.IsPlanetCallType(Channel.ChannelType))
+        {
+            var associatedChatId = GetAssociatedChatChannelId();
+            _notificationCount = NotificationService.GetChannelNotifications(Channel.Id);
+            if (associatedChatId is not null)
+                _notificationCount += NotificationService.GetChannelNotifications(associatedChatId.Value);
+        }
+        else
+        {
+            _notificationCount = NotificationService.GetChannelNotifications(Channel.Id);
+        }
     }
     
     // Get local index
@@ -389,7 +403,7 @@
         }
         else
         {
-            if (Channel.Id != state.ChannelId)
+            if (!MatchesChannelOrAssociatedChat(state.ChannelId))
                 return Task.CompletedTask;
         }
         
@@ -409,7 +423,7 @@
         }
         else
         {
-            if (Channel.Id != state.ChannelId)
+            if (!MatchesChannelOrAssociatedChat(state.ChannelId))
                 return Task.CompletedTask;
         }
             
@@ -439,7 +453,7 @@
         }
         else
         {
-            if (Channel.Id != notification.ChannelId)
+            if (notification.ChannelId is null || !MatchesChannelOrAssociatedChat(notification.ChannelId.Value))
                 return Task.CompletedTask;
         }
         
@@ -513,6 +527,10 @@
         // Planet voice
         { new IconState(false, false, ChannelTypeEnum.PlanetVoice), new IconData("music-note-beamed", "Voice channel", "16px", "-2px", "6px") },
         { new IconState(false, true, ChannelTypeEnum.PlanetVoice), new IconData("music-note-beamed", "Voice channel with unread messages", "16px", "-2px", "6px") },
+
+        // Planet video
+        { new IconState(false, false, ChannelTypeEnum.PlanetVideo), new IconData("camera-video", "Video channel", "16px", "-2px", "6px") },
+        { new IconState(false, true, ChannelTypeEnum.PlanetVideo), new IconData("camera-video-fill", "Video channel with unread messages", "16px", "-2px", "6px") },
         
         // Direct chat
         { new IconState(false, false, ChannelTypeEnum.DirectChat), new IconData("chat-left", "Direct chat", "14px", "-2px") },
@@ -540,6 +558,28 @@
     }
     
     #endregion
+
+    private long? GetAssociatedChatChannelId()
+    {
+        if (!ISharedChannel.IsPlanetCallType(Channel.ChannelType))
+            return null;
+
+        if (Channel.AssociatedChatChannelId is not null)
+            return Channel.AssociatedChatChannelId;
+
+        return Planet.Channels
+            .FirstOrDefault(x => x.AssociatedChatChannelId == Channel.Id)
+            ?.Id;
+    }
+
+    private bool MatchesChannelOrAssociatedChat(long channelId)
+    {
+        if (channelId == Channel.Id)
+            return true;
+
+        var associatedChatId = GetAssociatedChatChannelId();
+        return associatedChatId is not null && associatedChatId.Value == channelId;
+    }
     
     #region Drag and Drop
     

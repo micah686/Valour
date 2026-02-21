@@ -31,10 +31,10 @@ public class VoiceSignallingApi
         if (dbChannel is null || !ISharedChannel.VoiceChannelTypes.Contains(dbChannel.ChannelType))
             return ValourResult.NotFound("Channel does not exist.");
 
-        // Planet voice is the only supported type in this migration pass.
-        if (dbChannel.ChannelType != ChannelTypeEnum.PlanetVoice || dbChannel.PlanetId is null)
+        // Planet call channels are currently supported for RealtimeKit.
+        if (!ISharedChannel.IsPlanetCallType(dbChannel.ChannelType) || dbChannel.PlanetId is null)
         {
-            return ValourResult.BadRequest("RealtimeKit voice currently supports only planet voice channels.");
+            return ValourResult.BadRequest("RealtimeKit currently supports only planet voice or video channels.");
         }
 
         var channel = dbChannel.ToModel();
@@ -191,10 +191,10 @@ public class VoiceSignallingApi
         if (dbChannel is null || !ISharedChannel.VoiceChannelTypes.Contains(dbChannel.ChannelType))
             return VoiceModerationValidationResult.FromError(ValourResult.NotFound("Channel does not exist."));
 
-        if (dbChannel.ChannelType != ChannelTypeEnum.PlanetVoice || dbChannel.PlanetId is null)
+        if (!ISharedChannel.IsPlanetCallType(dbChannel.ChannelType) || dbChannel.PlanetId is null)
         {
             return VoiceModerationValidationResult.FromError(
-                ValourResult.BadRequest("Voice moderation currently supports only planet voice channels."));
+                ValourResult.BadRequest("Voice moderation currently supports only planet voice or video channels."));
         }
 
         var channel = dbChannel.ToModel();

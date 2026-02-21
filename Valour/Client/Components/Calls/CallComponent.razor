@@ -270,7 +270,56 @@
                 Defaults = new RealtimeKitMediaDefaults
                 {
                     Audio = false,
-                    Video = false
+                    Video = false,
+                    MediaConfiguration = new RealtimeKitMediaConfiguration
+                    {
+                        Audio = new RealtimeKitAudioMediaConfiguration
+                        {
+                            EnableHighBitrate = true,
+                            EnableStereo = true
+                        },
+                        Video = new RealtimeKitVideoMediaConfiguration
+                        {
+                            Width = new RealtimeKitNumericConstraint
+                            {
+                                Ideal = 1920
+                            },
+                            Height = new RealtimeKitNumericConstraint
+                            {
+                                Ideal = 1080
+                            },
+                            FrameRate = new RealtimeKitNumericConstraint
+                            {
+                                Ideal = 30,
+                                Max = 30
+                            }
+                        }
+                    }
+                },
+                Overrides = new RealtimeKitOverrides
+                {
+                    SimulcastConfig = new RealtimeKitSimulcastConfig
+                    {
+                        Disable = false,
+                        Encodings = new[]
+                        {
+                            new RealtimeKitSimulcastEncoding
+                            {
+                                Rid = "q",
+                                ScaleResolutionDownBy = 2,
+                                MaxBitrate = 900000,
+                                MaxFramerate = 24,
+                                ScalabilityMode = "L1T1"
+                            },
+                            new RealtimeKitSimulcastEncoding
+                            {
+                                Rid = "h",
+                                MaxBitrate = 2500000,
+                                MaxFramerate = 30,
+                                ScalabilityMode = "L1T1"
+                            }
+                        }
+                    }
                 }
             });
 

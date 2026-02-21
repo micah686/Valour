@@ -8,41 +8,49 @@
 @using Valour.Shared.Models
 @using Channel = Valour.Sdk.Models.Channel
 
-@if (_loading)
-{
-    <Loading Title="Loading chat..." Spin="@true" />
-}
-else
-{
-    <ChatHeaderComponent Channel="@Channel" ChatComponent="@this" />
-    <div class="chat-member-wrapper">
-        <div style="width: 100%; overflow: hidden" @onmouseleave="@OnMouseLeaveMessageArea">
-            <div @ref="@MessageWrapperEl" class="chat-holder mt-auto">
-                <!-- Pushes messages to bottom -->
-                <div class="pusher"></div>
+<div class="chat-window-root @(Embedded ? "embedded" : string.Empty)">
+    @if (_loading)
+    {
+        <Loading Title="Loading chat..." Spin="@true" />
+    }
+    else
+    {
+        @if (!HideHeader)
+        {
+            <ChatHeaderComponent Channel="@Channel" ChatComponent="@this" />
+        }
+        <div class="chat-member-wrapper @(HideMemberList ? "member-list-hidden" : string.Empty)">
+            <div style="width: 100%; overflow: hidden" @onmouseleave="@OnMouseLeaveMessageArea">
+                <div @ref="@MessageWrapperEl" class="chat-holder mt-auto">
+                    <!-- Pushes messages to bottom -->
+                    <div class="pusher"></div>
 
-                <!-- Actual messages -->
-                @MessagesFragment
+                    <!-- Actual messages -->
+                    @MessagesFragment
 
-                <div class="anchor"></div>
-            </div>
-            <RadialPalette @ref="@_hoverMenu"
-                           OptionSize="60"
-                           Scale="0.5"
-                           Radius="75"
-                           AnimationDelayStep="0.02"/>
-
-            <ControlledRenderWrapper @ref="@_reactionSelectorRenderWrapper">
-                <div class="reaction-selector-wrapper" style="bottom: @(_reactionSelectorTop); right: @(_reactionSelectorLeft);">
-                    <EmojiMart @ref="@_reactionSelector" EmojiSet="twitter" StartShown="false" OnClickOutside="@OnClickOutsideReactionPicker" OnEmojiClick="@OnReactionSelectedAsync"/>
+                    <div class="anchor"></div>
                 </div>
-            </ControlledRenderWrapper>
-        </div>
-        <MemberListComponent @ref="@MemberListComponent" Channel="@Channel"/>
-    </div>
-}
+                <RadialPalette @ref="@_hoverMenu"
+                               OptionSize="60"
+                               Scale="0.5"
+                               Radius="75"
+                               AnimationDelayStep="0.02"/>
 
-<InputComponent @ref="@InputComponent" ChatComponent="@this" />
+                <ControlledRenderWrapper @ref="@_reactionSelectorRenderWrapper">
+                    <div class="reaction-selector-wrapper" style="bottom: @(_reactionSelectorTop); right: @(_reactionSelectorLeft);">
+                        <EmojiMart @ref="@_reactionSelector" EmojiSet="twitter" StartShown="false" OnClickOutside="@OnClickOutsideReactionPicker" OnEmojiClick="@OnReactionSelectedAsync"/>
+                    </div>
+                </ControlledRenderWrapper>
+            </div>
+            @if (!HideMemberList)
+            {
+                <MemberListComponent @ref="@MemberListComponent" Channel="@Channel"/>
+            }
+        </div>
+    }
+
+    <InputComponent @ref="@InputComponent" ChatComponent="@this" />
+</div>
 
 
 @code {
@@ -192,6 +200,15 @@ else
     
     private bool _loading = true;
 
+    [Parameter]
+    public bool Embedded { get; set; }
+
+    [Parameter]
+    public bool HideHeader { get; set; }
+
+    [Parameter]
+    public bool HideMemberList { get; set; }
+
     public Channel Channel;
     public PermissionsNode ChannelPermissions { get; set; }
     
@@ -252,8 +269,9 @@ else
         Channel.MessageReceived += OnReceiveMessage;
         Channel.MessageEdited += OnReceiveMessageEdit;
         Channel.MessageDeleted += OnDeleteMessage;
-        
-        WindowCtx.Tab.OnStartFloating += OnStartFloating;
+
+        if (WindowCtx?.Tab is not null)
+            WindowCtx.Tab.OnStartFloating += OnStartFloating;
     }
 
     private async Task OnReactionSelectedAsync(EmojiClickEvent e)
@@ -534,7 +552,8 @@ else
 
     public async Task OnClickWindow()
     {
-        await WindowCtx.Tab.NotifyFocused();
+        if (WindowCtx?.Tab is not null)
+            await WindowCtx.Tab.NotifyFocused();
     }
     
     public async Task OnStartFloating()
@@ -544,11 +563,17 @@ else
 
     public Task OnPlanetDeleted()
     {
+        if (WindowCtx?.Tab is null)
+            return Task.CompletedTask;
+
         return WindowCtx.Tab.SetContent(HomeWindowComponent.DefaultContent);
     }
 
     public Task OnSelfMemberDeleted()
     {
+        if (WindowCtx?.Tab is null)
+            return Task.CompletedTask;
+
         return WindowCtx.Tab.SetContent(HomeWindowComponent.DefaultContent);
     }
     
@@ -1325,11 +1350,15 @@ else
     
     async ValueTask IAsyncDisposable.DisposeAsync()
     {
+        if (Channel is null)
+            return;
+
         Channel.MessageDeleted -= OnDeleteMessage;
         Channel.MessageReceived -= OnReceiveMessage;
         Channel.MessageEdited -= OnReceiveMessageEdit;
-        
-        WindowCtx.Tab.OnStartFloating -= OnStartFloating;
+
+        if (WindowCtx?.Tab is not null)
+            WindowCtx.Tab.OnStartFloating -= OnStartFloating;
         Client.NodeService.NodeReconnected -= OnNodeReconnect;
         Client.BlockService.BlocksChanged -= OnBlocksChanged;
         BrowserUtils.Focused -= OnBrowserFocused;

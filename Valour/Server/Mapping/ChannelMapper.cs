@@ -22,6 +22,7 @@ public static class ChannelMapper
             InheritsPerms = channel.InheritsPerms,
             IsDefault = channel.IsDefault,
             Nsfw = channel.Nsfw,
+            AssociatedChatChannelId = channel.AssociatedChatChannelId,
 
             Members = channel.Members?.Select(x => x.ToModel()).ToList()
         };
@@ -45,6 +46,7 @@ public static class ChannelMapper
             InheritsPerms = channel.InheritsPerms,
             IsDefault = channel.IsDefault,
             Nsfw = channel.Nsfw,
+            AssociatedChatChannelId = channel.AssociatedChatChannelId,
             Version = ISharedChannel.CurrentVersion,
             
             Members = channel.Members?.Select(x => x.ToDatabase()).ToList()
