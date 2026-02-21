@@ -190,6 +190,24 @@ function canRequestMicrophoneAccess() {
         && typeof navigator.mediaDevices.getUserMedia === "function";
 }
 
+function canRequestCameraAccess() {
+    return canRequestMicrophoneAccess();
+}
+
+function canRequestScreenShareAccess() {
+    return canUseMediaDevices()
+        && typeof navigator.mediaDevices.getDisplayMedia === "function";
+}
+
+function isAndroidDeviceInternal() {
+    if (typeof navigator === "undefined") {
+        return false;
+    }
+
+    const userAgent = navigator.userAgent ?? "";
+    return /android/i.test(userAgent);
+}
+
 function normalizePermissionState(state) {
     if (state === "granted" || state === "denied" || state === "prompt") {
         return state;
@@ -209,14 +227,39 @@ function stopStreamTracks(stream) {
 }
 
 async function requestMicrophonePermissionInternal() {
-    if (!canRequestMicrophoneAccess()) {
+    return await requestMediaPermissionInternal(
+        canRequestMicrophoneAccess(),
+        { audio: true }
+    );
+}
+
+async function requestCameraPermissionInternal() {
+    return await requestMediaPermissionInternal(
+        canRequestCameraAccess(),
+        { video: true }
+    );
+}
+
+async function requestPlatformVideoPermissionInternal() {
+    if (isAndroidDeviceInternal()) {
+        return await requestMediaPermissionInternal(
+            canRequestCameraAccess(),
+            { audio: true, video: true }
+        );
+    }
+
+    return await requestCameraPermissionInternal();
+}
+
+async function requestMediaPermissionInternal(canRequestAccess, constraints) {
+    if (!canRequestAccess) {
         return false;
     }
 
     let stream = null;
 
     try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
         return true;
     } catch {
         return false;
@@ -391,17 +434,50 @@ export async function getAudioInputDevices() {
         });
 }
 
+export async function getVideoInputDevices() {
+    if (!canUseMediaDevices() || typeof navigator.mediaDevices.enumerateDevices !== "function") {
+        return [];
+    }
+
+    let unnamedCameraIndex = 1;
+    const devices = await navigator.mediaDevices.enumerateDevices();
+
+    return devices
+        .filter((device) => device.kind === "videoinput")
+        .map((device) => {
+            const hasLabel = typeof device.label === "string" && device.label.trim().length > 0;
+            const label = hasLabel ? device.label : `Camera ${unnamedCameraIndex++}`;
+
+            return {
+                deviceId: device.deviceId,
+                label
+            };
+        });
+}
+
 export async function getMicrophonePermissionState() {
     if (!canRequestMicrophoneAccess()) {
         return "unsupported";
     }
 
+    return await getPermissionStateAsync("microphone");
+}
+
+export async function getCameraPermissionState() {
+    if (!canRequestCameraAccess()) {
+        return "unsupported";
+    }
+
+    return await getPermissionStateAsync("camera");
+}
+
+async function getPermissionStateAsync(name) {
     if (!navigator.permissions || typeof navigator.permissions.query !== "function") {
         return "unknown";
     }
 
     try {
-        const permission = await navigator.permissions.query({ name: "microphone" });
+        const permission = await navigator.permissions.query({ name });
         return normalizePermissionState(permission?.state);
     } catch {
         return "unknown";
@@ -410,6 +486,22 @@ export async function getMicrophonePermissionState() {
 
 export async function requestMicrophonePermission() {
     return await requestMicrophonePermissionInternal();
+}
+
+export async function requestCameraPermission() {
+    return await requestCameraPermissionInternal();
+}
+
+export async function requestPlatformVideoPermission() {
+    return await requestPlatformVideoPermissionInternal();
+}
+
+export function isScreenShareSupported() {
+    return canRequestScreenShareAccess();
+}
+
+export function isAndroidDevice() {
+    return isAndroidDeviceInternal();
 }
 
 export function getSelfState() {

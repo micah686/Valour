@@ -290,8 +290,8 @@
                             },
                             FrameRate = new RealtimeKitNumericConstraint
                             {
-                                Ideal = 30,
-                                Max = 30
+                                Ideal = 60,
+                                Max = 60
                             }
                         }
                     }
@@ -306,16 +306,24 @@
                             new RealtimeKitSimulcastEncoding
                             {
                                 Rid = "q",
-                                ScaleResolutionDownBy = 2,
-                                MaxBitrate = 900000,
-                                MaxFramerate = 24,
+                                ScaleResolutionDownBy = 4,
+                                MaxBitrate = 200000,
+                                MaxFramerate = 15,
                                 ScalabilityMode = "L1T1"
                             },
                             new RealtimeKitSimulcastEncoding
                             {
                                 Rid = "h",
-                                MaxBitrate = 2500000,
+                                ScaleResolutionDownBy = 2,
+                                MaxBitrate = 800000,
                                 MaxFramerate = 30,
+                                ScalabilityMode = "L1T1"
+                            },
+                            new RealtimeKitSimulcastEncoding
+                            {
+                                Rid = "f",
+                                MaxBitrate = 2500000,
+                                MaxFramerate = 60,
                                 ScalabilityMode = "L1T1"
                             }
                         }
@@ -390,7 +398,7 @@
         }
     }
 
-    public async Task OnMicrophoneSelected(string id)
+    public async Task OnMicrophoneSelected(string? id)
     {
         await SetMic(id);
     }

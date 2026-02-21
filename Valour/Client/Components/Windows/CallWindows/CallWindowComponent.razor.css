@@ -3,12 +3,14 @@
     flex-direction: column;
     height: 100%;
     min-height: 0;
+    min-width: 0;
     overflow: hidden;
 }
 
 .call-window-top {
     flex: 1 1 62%;
     min-height: 180px;
+    min-width: 0;
     border-bottom: 1px solid var(--slight-tint);
     overflow: hidden;
 }
@@ -16,6 +18,7 @@
 .call-window-bottom {
     flex: 1 1 38%;
     min-height: 220px;
+    min-width: 0;
     overflow: hidden;
     display: flex;
     flex-direction: column;

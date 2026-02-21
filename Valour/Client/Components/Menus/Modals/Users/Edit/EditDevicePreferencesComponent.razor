@@ -66,7 +66,7 @@
         </select>
     }
 
-    @if (ShouldShowPermissionButton)
+    @if (ShouldShowMicPermissionButton)
     {
         <button class="v-btn mt-2 mr-2" disabled="@_isRequestingMicPermission" @onclick="OnRequestMicrophonePermissionAsync">
             @(_isRequestingMicPermission ? "Requesting Access..." : "Enable Microphone Access")
@@ -81,20 +81,72 @@
     }
 </div>
 
+<div class="perm-list-item mt-3">
+    <div class="perm-list-name mb-1">
+        Input Device (Camera)
+    </div>
+    <div class="perm-list-desc mt-1">
+        @GetCameraPermissionDescription()
+    </div>
+
+    @if (_isLoadingCameras)
+    {
+        <p class="help-text mt-2">Loading camera devices...</p>
+    }
+    else if (_cameras.Length == 0)
+    {
+        <p class="help-text mt-2">No cameras found yet.</p>
+    }
+    else
+    {
+        <select style="margin-top: 12px" class="form-select" value="@(_selectedCameraId ?? string.Empty)" @onchange="@OnChooseCamera">
+            @for (int i = 0; i < _cameras.Length; i++)
+            {
+                var camera = _cameras[i];
+                <option value="@camera.DeviceId">@camera.Label</option>
+            }
+        </select>
+    }
+
+    @if (ShouldShowCameraPermissionButton)
+    {
+        <button class="v-btn mt-2 mr-2" disabled="@_isRequestingCameraPermission" @onclick="OnRequestCameraPermissionAsync">
+            @(_isRequestingCameraPermission ? "Requesting Access..." : "Enable Camera Access")
+        </button>
+    }
+
+    <button class="v-btn mt-2" disabled="@_isLoadingCameras" @onclick="OnRefreshCamerasAsync">Refresh Devices</button>
+
+    @if (!string.IsNullOrWhiteSpace(_cameraError))
+    {
+        <p class="help-text mt-2" style="color: var(--v-red);">@_cameraError</p>
+    }
+</div>
+
 
 @code {
 
     private InputMic[] _mics = Array.Empty<InputMic>();
+    private InputMic[] _cameras = Array.Empty<InputMic>();
     private string? _selectedMicId;
+    private string? _selectedCameraId;
     private string _micPermissionState = "unknown";
+    private string _cameraPermissionState = "unknown";
     private string? _micError;
+    private string? _cameraError;
     private bool _isLoadingMics;
+    private bool _isLoadingCameras;
     private bool _isRequestingMicPermission;
+    private bool _isRequestingCameraPermission;
     private bool _errorReportingEnabled;
 
-    private bool ShouldShowPermissionButton =>
+    private bool ShouldShowMicPermissionButton =>
         string.Equals(_micPermissionState, "prompt", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(_micPermissionState, "unknown", StringComparison.OrdinalIgnoreCase);
+
+    private bool ShouldShowCameraPermissionButton =>
+        string.Equals(_cameraPermissionState, "prompt", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(_cameraPermissionState, "unknown", StringComparison.OrdinalIgnoreCase);
 
     private async Task OnChooseMic(ChangeEventArgs e)
     {
@@ -107,6 +159,7 @@
     {
         await LoadErrorReportingStateAsync();
         await RefreshMicsAsync();
+        await RefreshCamerasAsync();
     }
 
     private async Task OnRefreshMicsAsync()
@@ -119,6 +172,19 @@
         _isRequestingMicPermission = true;
         await RefreshMicsAsync(requestPermission: true);
         _isRequestingMicPermission = false;
+        StateHasChanged();
+    }
+
+    private async Task OnRefreshCamerasAsync()
+    {
+        await RefreshCamerasAsync();
+    }
+
+    private async Task OnRequestCameraPermissionAsync()
+    {
+        _isRequestingCameraPermission = true;
+        await RefreshCamerasAsync(requestPermission: true);
+        _isRequestingCameraPermission = false;
         StateHasChanged();
     }
 
@@ -184,6 +250,75 @@
         }
     }
 
+    private async Task OnChooseCamera(ChangeEventArgs e)
+    {
+        var selectedCameraId = e.Value?.ToString() ?? string.Empty;
+        _selectedCameraId = selectedCameraId;
+        await DevicePreferences.SetCameraDeviceId(selectedCameraId, LocalStorage);
+    }
+
+    private async Task RefreshCamerasAsync(bool requestPermission = false)
+    {
+        _isLoadingCameras = true;
+        _cameraError = null;
+        StateHasChanged();
+
+        try
+        {
+            if (requestPermission)
+            {
+                var granted = await RealtimeKitDeviceService.RequestCameraPermissionAsync();
+                if (!granted)
+                {
+                    _cameraError = "Camera permission was not granted.";
+                }
+            }
+
+            _cameraPermissionState = await RealtimeKitDeviceService.GetCameraPermissionStateAsync();
+            _cameras = await RealtimeKitDeviceService.GetVideoInputDevicesAsync();
+
+            if (_cameras.Length == 0)
+            {
+                _selectedCameraId = null;
+
+                if (string.Equals(_cameraPermissionState, "denied", StringComparison.OrdinalIgnoreCase))
+                {
+                    _cameraError ??= "Camera access is blocked. Enable it in browser site settings, then refresh devices.";
+                }
+            }
+            else
+            {
+                var savedDeviceId = DevicePreferences.CameraDeviceId;
+                var hasSavedSelection = !string.IsNullOrWhiteSpace(savedDeviceId)
+                    && _cameras.Any(x => x.DeviceId == savedDeviceId);
+
+                if (hasSavedSelection)
+                {
+                    _selectedCameraId = savedDeviceId;
+                }
+                else
+                {
+                    _selectedCameraId = _cameras[0].DeviceId;
+
+                    if (!string.IsNullOrWhiteSpace(_selectedCameraId))
+                    {
+                        await DevicePreferences.SetCameraDeviceId(_selectedCameraId, LocalStorage);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _cameras = Array.Empty<InputMic>();
+            _cameraError = string.IsNullOrWhiteSpace(ex.Message) ? "Failed to load camera devices." : ex.Message;
+        }
+        finally
+        {
+            _isLoadingCameras = false;
+            StateHasChanged();
+        }
+    }
+
     private async Task SwitchAutoEmojis()
     {
         DevicePreferences.AutoEmoji = !DevicePreferences.AutoEmoji;
@@ -206,6 +341,23 @@
             return "This browser does not support microphone device access for this feature.";
 
         return "Microphone permission state is unavailable on this browser. Use 'Enable Microphone Access' to request access.";
+    }
+
+    private string GetCameraPermissionDescription()
+    {
+        if (string.Equals(_cameraPermissionState, "granted", StringComparison.OrdinalIgnoreCase))
+            return "Camera access is enabled for this site.";
+
+        if (string.Equals(_cameraPermissionState, "denied", StringComparison.OrdinalIgnoreCase))
+            return "Camera access is blocked in your browser.";
+
+        if (string.Equals(_cameraPermissionState, "prompt", StringComparison.OrdinalIgnoreCase))
+            return "Camera access has not been granted yet.";
+
+        if (string.Equals(_cameraPermissionState, "unsupported", StringComparison.OrdinalIgnoreCase))
+            return "This browser does not support camera device access for this feature.";
+
+        return "Camera permission state is unavailable on this browser. Use 'Enable Camera Access' to request access.";
     }
 
     private async Task LoadErrorReportingStateAsync()

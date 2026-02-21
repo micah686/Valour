@@ -297,7 +297,7 @@
             if (newWindowContent is not null)
             {
                 await WindowService.OpenWindowAtFocused(newWindowContent);
-                await Sidebar.ToggleSidebar();
+                await Sidebar.ToggleMobileSidebar();
             }
         }
         else if (Channel.ChannelType == ChannelTypeEnum.PlanetCategory)

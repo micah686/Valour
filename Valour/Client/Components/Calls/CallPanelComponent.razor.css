@@ -3,6 +3,7 @@
     flex-direction: column;
     height: 100%;
     min-height: 0;
+    min-width: 0;
     background: linear-gradient(150deg, var(--main-2) 0%, var(--main-3) 65%, var(--main-4) 100%);
 }
 
@@ -387,6 +388,7 @@
 .video-stage {
     flex: 1;
     min-height: 0;
+    min-width: 0;
     padding: 10px;
     display: flex;
     flex-direction: column;
@@ -409,6 +411,7 @@
     height: 100%;
     width: 100%;
     min-height: 0;
+    min-width: 0;
 }
 
 .video-grid.one {
@@ -436,11 +439,13 @@
     gap: 10px;
     height: 100%;
     min-height: 0;
+    min-width: 0;
 }
 
 .video-focus-main {
     flex: 1;
     min-height: 0;
+    min-width: 0;
 }
 
 .video-focus-main .video-tile {

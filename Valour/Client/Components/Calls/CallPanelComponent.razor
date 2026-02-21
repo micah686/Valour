@@ -373,6 +373,7 @@
     protected override void OnInitialized()
     {
         DevicePreferences.OnMicrophoneDeviceIdChanged += OnMicrophoneSelected;
+        DevicePreferences.OnCameraDeviceIdChanged += OnCameraSelected;
         BrowserUtils.Focused += OnAppResumed;
         SubscribeToVoiceHubEvents();
     }
@@ -487,8 +488,8 @@
                             },
                             FrameRate = new RealtimeKitNumericConstraint
                             {
-                                Ideal = 30,
-                                Max = 30
+                                Ideal = 60,
+                                Max = 60
                             }
                         }
                     }
@@ -504,16 +505,24 @@
                                 new RealtimeKitSimulcastEncoding
                                 {
                                     Rid = "q",
-                                    ScaleResolutionDownBy = 2,
-                                    MaxBitrate = 900000,
-                                    MaxFramerate = 24,
+                                    ScaleResolutionDownBy = 4,
+                                    MaxBitrate = 200000,
+                                    MaxFramerate = 15,
                                     ScalabilityMode = "L1T1"
                                 },
                                 new RealtimeKitSimulcastEncoding
                                 {
                                     Rid = "h",
-                                    MaxBitrate = 2500000,
+                                    ScaleResolutionDownBy = 2,
+                                    MaxBitrate = 800000,
                                     MaxFramerate = 30,
+                                    ScalabilityMode = "L1T1"
+                                },
+                                new RealtimeKitSimulcastEncoding
+                                {
+                                    Rid = "f",
+                                    MaxBitrate = 2500000,
+                                    MaxFramerate = 60,
                                     ScalabilityMode = "L1T1"
                                 }
                             }
@@ -532,8 +541,15 @@
             // Attempt to enable microphone — not required to participate
             try
             {
-                await _rtk.EnableAudioAsync();
-                await SetMic(DevicePreferences.MicrophoneDeviceId);
+                if (await EnsureMicrophonePermissionAsync())
+                {
+                    await _rtk.EnableAudioAsync();
+                    await SetMic(DevicePreferences.MicrophoneDeviceId);
+                }
+                else
+                {
+                    _audioEnabled = false;
+                }
             }
             catch
             {
@@ -599,9 +615,14 @@
         }
     }
 
-    private async Task OnMicrophoneSelected(string id)
+    private async Task OnMicrophoneSelected(string? id)
     {
         await SetMic(id);
+    }
+
+    private async Task OnCameraSelected(string? id)
+    {
+        await SetCamera(id);
     }
 
     private async Task OnAppResumed()
@@ -721,6 +742,12 @@
             }
             else
             {
+                if (!await EnsureMicrophonePermissionAsync())
+                {
+                    StateHasChanged();
+                    return;
+                }
+
                 await _rtk.EnableAudioAsync();
                 await SetMic(DevicePreferences.MicrophoneDeviceId);
             }
@@ -743,9 +770,20 @@
         try
         {
             if (_videoEnabled)
+            {
                 await _rtk.DisableVideoAsync();
+            }
             else
+            {
+                if (!await EnsureCameraPermissionAsync())
+                {
+                    StateHasChanged();
+                    return;
+                }
+
                 await _rtk.EnableVideoAsync();
+                await SetCamera(DevicePreferences.CameraDeviceId);
+            }
 
             await RefreshStateFromSdkAsync();
             _pendingParticipantMediaSync = true;
@@ -771,6 +809,13 @@
             }
             else
             {
+                if (!await _rtk.IsScreenShareSupportedAsync())
+                {
+                    _error = "Screen sharing is not supported on this browser/device.";
+                    StateHasChanged();
+                    return;
+                }
+
                 await _rtk.EnableScreenShareAsync();
             }
 
@@ -925,6 +970,112 @@
         catch (Exception ex)
         {
             _error = ex.Message;
+        }
+    }
+
+    private async Task SetCamera(string? deviceId)
+    {
+        if (_rtk is null || !_joined || string.IsNullOrWhiteSpace(deviceId))
+            return;
+
+        try
+        {
+            await _rtk.SetDeviceAsync(new RealtimeKitDeviceSelection
+            {
+                DeviceId = deviceId,
+                Kind = "videoinput"
+            });
+
+            await RefreshStateFromSdkAsync();
+            _pendingParticipantMediaSync = true;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task<bool> EnsureMicrophonePermissionAsync()
+    {
+        if (_rtk is null)
+            return false;
+
+        try
+        {
+            var permissionState = await _rtk.GetMicrophonePermissionStateAsync();
+            if (string.Equals(permissionState, "denied", StringComparison.OrdinalIgnoreCase))
+            {
+                _error = "Microphone access is blocked. Enable it in browser site settings.";
+                return false;
+            }
+
+            if (string.Equals(permissionState, "unsupported", StringComparison.OrdinalIgnoreCase))
+            {
+                _error = "Microphone access is not supported on this browser/device.";
+                return false;
+            }
+
+            if (string.Equals(permissionState, "granted", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            var granted = await _rtk.RequestMicrophonePermissionAsync();
+            if (!granted)
+            {
+                _error = "Microphone permission was not granted.";
+            }
+            else
+            {
+                _error = null;
+            }
+
+            return granted;
+        }
+        catch
+        {
+            // If permission APIs are unavailable, continue and let SDK attempt capture directly.
+            return true;
+        }
+    }
+
+    private async Task<bool> EnsureCameraPermissionAsync()
+    {
+        if (_rtk is null)
+            return false;
+
+        try
+        {
+            var permissionState = await _rtk.GetCameraPermissionStateAsync();
+            if (string.Equals(permissionState, "denied", StringComparison.OrdinalIgnoreCase))
+            {
+                _error = "Camera access is blocked. Enable it in browser site settings.";
+                return false;
+            }
+
+            if (string.Equals(permissionState, "unsupported", StringComparison.OrdinalIgnoreCase))
+            {
+                _error = "Camera access is not supported on this browser/device.";
+                return false;
+            }
+
+            if (string.Equals(permissionState, "granted", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            var granted = await _rtk.RequestPlatformVideoPermissionAsync();
+            if (!granted)
+            {
+                _error = "Camera permission was not granted.";
+            }
+            else
+            {
+                _error = null;
+            }
+
+            return granted;
+        }
+        catch
+        {
+            // If permission APIs are unavailable, continue and let SDK attempt capture directly.
+            return true;
         }
     }
 
@@ -1455,6 +1606,7 @@
     async ValueTask IAsyncDisposable.DisposeAsync()
     {
         DevicePreferences.OnMicrophoneDeviceIdChanged -= OnMicrophoneSelected;
+        DevicePreferences.OnCameraDeviceIdChanged -= OnCameraSelected;
         BrowserUtils.Focused -= OnAppResumed;
         _voiceSessionReplaceSubscription?.Dispose();
         _voiceSessionReplaceSubscription = null;

@@ -26,6 +26,12 @@ public sealed class RealtimeKitDeviceService : IAsyncDisposable
         return await module.InvokeAsync<InputMic[]>("getAudioInputDevices");
     }
 
+    public async Task<InputMic[]> GetVideoInputDevicesAsync()
+    {
+        var module = await GetModuleAsync();
+        return await module.InvokeAsync<InputMic[]>("getVideoInputDevices");
+    }
+
     public async Task<string> GetMicrophonePermissionStateAsync()
     {
         var module = await GetModuleAsync();
@@ -36,6 +42,18 @@ public sealed class RealtimeKitDeviceService : IAsyncDisposable
     {
         var module = await GetModuleAsync();
         return await module.InvokeAsync<bool>("requestMicrophonePermission");
+    }
+
+    public async Task<string> GetCameraPermissionStateAsync()
+    {
+        var module = await GetModuleAsync();
+        return await module.InvokeAsync<string>("getCameraPermissionState");
+    }
+
+    public async Task<bool> RequestCameraPermissionAsync()
+    {
+        var module = await GetModuleAsync();
+        return await module.InvokeAsync<bool>("requestCameraPermission");
     }
 
     public async ValueTask DisposeAsync()
