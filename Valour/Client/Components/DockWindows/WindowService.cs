@@ -93,7 +93,7 @@ public static class WindowService
         NotifyDockLayoutUpdated();
     }
 
-    public static async Task OpenWindowAtFocused(WindowContent content)
+    public static async Task OpenWindowAtFocused(WindowContent content, WindowTab tabToReplace = null)
     {
         // If a channel window for the same channel is already open, focus it instead
         if (content is ChatWindowComponent.Content chatContent && chatContent.Data is not null)
@@ -109,7 +109,7 @@ public static class WindowService
                 return;
             }
         }
-        
+
         if (content is CallWindowComponent.Content callContent && callContent.Data is not null)
         {
             var existingTab = GlobalTabs.FirstOrDefault(t =>
@@ -122,6 +122,13 @@ public static class WindowService
                 await existingTab.Layout.DockComponent.NotifyLayoutChanged();
                 return;
             }
+        }
+
+        // Replace the given tab's content instead of adding a new tab
+        if (tabToReplace?.Component is not null)
+        {
+            await tabToReplace.Component.ReplaceAsync(content);
+            return;
         }
 
         var tab = new WindowTab(content);
