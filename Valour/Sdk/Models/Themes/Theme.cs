@@ -79,6 +79,8 @@ public class Theme : ClientModel<Theme, long>, ISharedTheme
     public string AuthorName { get; set; }
     public int Upvotes { get; set; }
     public int Downvotes { get; set; }
+    public bool? MySentiment { get; set; }
+    public long? MyVoteId { get; set; }
 
     private Theme() : base() {}
     public Theme (ValourClient client) : base(client) {}
@@ -95,6 +97,9 @@ public class Theme : ClientModel<Theme, long>, ISharedTheme
             HasAnimatedBanner = HasAnimatedBanner,
             MainColor1 = MainColor1,
             PastelCyan = PastelCyan,
+            AuthorName = AuthorName,
+            Upvotes = Upvotes,
+            Downvotes = Downvotes,
         };
     }
     

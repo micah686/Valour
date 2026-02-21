@@ -34,7 +34,7 @@ public class ThemeService
     /// <summary>
     /// Returns a list of theme meta info, with optional search and pagination.
     /// </summary>
-    public async Task<QueryResponse<ThemeMeta>> QueryThemesAsync(QueryRequest queryRequest)
+    public async Task<QueryResponse<ThemeMeta>> QueryThemesAsync(QueryRequest queryRequest, long userId)
     {
         var take = queryRequest.Take;
 
@@ -59,7 +59,6 @@ public class ThemeService
         var skip = queryRequest.Skip;
 
         var data = await baseQuery
-            .Include(x => x.ThemeVotes)
             .Select(x => new
             {
                 Theme = x,
@@ -67,7 +66,8 @@ public class ThemeService
                 Upvotes = x.ThemeVotes.Count(v => v.Sentiment),
                 Downvotes = x.ThemeVotes.Count(v => !v.Sentiment),
                 VoteCount = x.ThemeVotes.Count(v => v.Sentiment) -
-                            x.ThemeVotes.Count(v => !v.Sentiment)
+                            x.ThemeVotes.Count(v => !v.Sentiment),
+                MyVote = x.ThemeVotes.Where(v => v.UserId == userId).Select(v => new { v.Id, v.Sentiment }).FirstOrDefault()
             })
             .OrderByDescending(x => x.VoteCount)
             .Skip(skip)
@@ -84,7 +84,9 @@ public class ThemeService
                 PastelCyan = x.Theme.PastelCyan,
                 AuthorName = x.AuthorName,
                 Upvotes = x.Upvotes,
-                Downvotes = x.Downvotes
+                Downvotes = x.Downvotes,
+                MySentiment = x.MyVote != null ? x.MyVote.Sentiment : null,
+                MyVoteId = x.MyVote != null ? x.MyVote.Id : null
             }).ToListAsync();
 
         return new QueryResponse<ThemeMeta>()
@@ -109,7 +111,9 @@ public class ThemeService
             PastelCyan = x.PastelCyan,
             AuthorName = x.Author.Name,
             Upvotes = x.ThemeVotes.Count(v => v.Sentiment),
-            Downvotes = x.ThemeVotes.Count(v => !v.Sentiment)
+            Downvotes = x.ThemeVotes.Count(v => !v.Sentiment),
+            MySentiment = x.ThemeVotes.Where(v => v.UserId == userId).Select(v => (bool?)v.Sentiment).FirstOrDefault(),
+            MyVoteId = x.ThemeVotes.Where(v => v.UserId == userId).Select(v => (long?)v.Id).FirstOrDefault()
         }).ToListAsync();
     }
 

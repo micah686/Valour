@@ -11,9 +11,11 @@ public class ThemeApi
     [UserRequired]
     public static async Task<IResult> QueryThemes(
         ThemeService themeService,
+        TokenService tokenService,
         [FromBody] QueryRequest request)
     {
-        var response = await themeService.QueryThemesAsync(request);
+        var token = await tokenService.GetCurrentTokenAsync();
+        var response = await themeService.QueryThemesAsync(request, token.UserId);
         return Results.Json(response);
     } 
     

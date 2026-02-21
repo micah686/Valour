@@ -44,4 +44,6 @@ public class Theme : ISharedTheme
     public string AuthorName { get; set; }
     public int Upvotes { get; set; }
     public int Downvotes { get; set; }
+    public bool? MySentiment { get; set; }
+    public long? MyVoteId { get; set; }
 }
