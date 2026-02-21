@@ -53,6 +53,7 @@ public class ValourClient
     public readonly ThemeService ThemeService;
     public readonly UnreadService UnreadService;
     public readonly PlanetTagService PlanetTagService;
+    public readonly VoiceStateService VoiceStateService;
 
     /// <summary>
     /// The base address the client is connected to
@@ -129,6 +130,7 @@ public class ValourClient
         ThemeService = new ThemeService(this);
         UnreadService = new UnreadService(this);
         PlanetTagService = new PlanetTagService(this);
+        VoiceStateService = new VoiceStateService(this);
 
         var tenorHttpClient = new HttpClient();
         tenorHttpClient.BaseAddress = new Uri("https://tenor.googleapis.com/v2/");

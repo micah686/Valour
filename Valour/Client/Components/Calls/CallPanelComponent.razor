@@ -248,6 +248,8 @@
     private List<VoiceParticipantState> _participants = new();
     private CancellationTokenSource? _participantRefreshLoopCts;
     private Task? _participantRefreshLoopTask;
+    private CancellationTokenSource? _heartbeatLoopCts;
+    private Task? _heartbeatLoopTask;
     private int _participantRefreshInProgress;
     private readonly HashSet<long> _participantMemberPrefetchInFlight = new();
     private IDisposable? _voiceSessionReplaceSubscription;
@@ -559,6 +561,7 @@
             await RefreshStateFromSdkAsync();
             await RefreshParticipantsAsync();
             StartParticipantRefreshLoop();
+            StartHeartbeatLoop();
         }
         catch (Exception ex)
         {
@@ -904,6 +907,9 @@
 
     private async Task SafeLeaveRoomInternalAsync(bool clearChannel)
     {
+        // Capture channel ID before any state changes
+        var leaveChannelId = ActiveChannel?.Id;
+
         if (_rtk is not null)
         {
             try
@@ -923,7 +929,23 @@
             }
         }
 
+        await StopHeartbeatLoopAsync();
         await StopParticipantRefreshLoopAsync();
+
+        // Notify server we left (awaited with timeout so it completes before disposal)
+        if (leaveChannelId is not null && Client.PrimaryNode is not null)
+        {
+            try
+            {
+                await Client.PrimaryNode.PostAsync(
+                    $"api/voice/realtimekit/channels/{leaveChannelId}/leave", new { })
+                    .WaitAsync(TimeSpan.FromSeconds(3));
+            }
+            catch
+            {
+                // Ignore leave notification failures during teardown.
+            }
+        }
 
         _joined = false;
         _connecting = false;
@@ -1241,6 +1263,63 @@
         {
             // If a refresh iteration is blocked in JS interop, don't block teardown forever.
         }
+        finally
+        {
+            cts.Dispose();
+        }
+    }
+
+    private void StartHeartbeatLoop()
+    {
+        if (_heartbeatLoopTask is { IsCompleted: false })
+            return;
+
+        _heartbeatLoopCts?.Dispose();
+        _heartbeatLoopCts = new CancellationTokenSource();
+        var cancellationToken = _heartbeatLoopCts.Token;
+
+        _heartbeatLoopTask = Task.Run(async () =>
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(45), cancellationToken);
+                    await Client.PrimaryNode.PostAsync("api/voice/realtimekit/heartbeat", new { });
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch
+                {
+                    // Keep heartbeat loop alive across transient failures.
+                }
+            }
+        }, cancellationToken);
+    }
+
+    private async Task StopHeartbeatLoopAsync()
+    {
+        if (_heartbeatLoopCts is null)
+            return;
+
+        var cts = _heartbeatLoopCts;
+        var heartbeatTask = _heartbeatLoopTask;
+
+        _heartbeatLoopCts = null;
+        _heartbeatLoopTask = null;
+
+        try
+        {
+            cts.Cancel();
+            if (heartbeatTask is not null)
+            {
+                await heartbeatTask.WaitAsync(TimeSpan.FromSeconds(2));
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (TimeoutException) { }
         finally
         {
             cts.Dispose();
@@ -1613,6 +1692,7 @@
         _voiceModerationSubscription?.Dispose();
         _voiceModerationSubscription = null;
 
+        await StopHeartbeatLoopAsync();
         await SafeLeaveRoomInternalAsync(clearChannel: true);
     }
 

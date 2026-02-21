@@ -384,6 +384,7 @@ public partial class Program
         services.AddScoped<ThemeService>();
         services.AddScoped<StaffService>();
         services.AddScoped<PlanetPermissionService>();
+        services.AddScoped<VoiceStateService>();
         services.AddScoped<StartupService>();
         services.AddScoped<PushNotificationService>();
         services.AddScoped<ITagService,TagService>();
@@ -404,6 +405,7 @@ public partial class Program
         services.AddHostedService<NodeStateWorker>();
         services.AddHostedService<SubscriptionWorker>();
         services.AddHostedService<StripeReconciliationWorker>();
+        services.AddHostedService<VoiceStateCleanupWorker>();
         services.AddHostedService<MigrationWorker>();
         services.AddEndpointsApiExplorer();
 

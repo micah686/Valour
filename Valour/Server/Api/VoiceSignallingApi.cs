@@ -12,6 +12,8 @@ public class VoiceSignallingApi
         app.MapPost("api/voice/realtimekit/channels/{channelId:long}/participants/{targetUserId:long}/mute", MuteParticipant);
         app.MapPost("api/voice/realtimekit/channels/{channelId:long}/participants/{targetUserId:long}/unmute", UnmuteParticipant);
         app.MapPost("api/voice/realtimekit/channels/{channelId:long}/participants/{targetUserId:long}/kick", KickParticipant);
+        app.MapPost("api/voice/realtimekit/channels/{channelId:long}/leave", LeaveVoiceChannel);
+        app.MapPost("api/voice/realtimekit/heartbeat", VoiceHeartbeat);
     }
 
     public static async Task<IResult> GetRealtimeKitToken(
@@ -20,6 +22,7 @@ public class VoiceSignallingApi
         PlanetMemberService memberService,
         CoreHubService coreHubService,
         RealtimeKitService realtimeKitService,
+        VoiceStateService voiceStateService,
         long channelId,
         string? sessionId)
     {
@@ -64,12 +67,26 @@ public class VoiceSignallingApi
             return ValourResult.BadRequest(tokenResult.Message);
         }
 
+        // Track voice state in Redis + HostedPlanet
+        var previousChannelId = await voiceStateService.UserJoinVoiceChannelAsync(
+            authToken.UserId, channelId, dbChannel.PlanetId.Value);
+
         if (!string.IsNullOrWhiteSpace(sessionId))
         {
             coreHubService.NotifyVoiceSessionReplace(authToken.UserId, new VoiceSessionReplaceEvent
             {
                 ChannelId = channel.Id,
                 SessionId = sessionId
+            });
+        }
+
+        // If user was in a different channel, also send session replace for the old channel
+        if (previousChannelId.HasValue && previousChannelId.Value != channelId)
+        {
+            coreHubService.NotifyVoiceSessionReplace(authToken.UserId, new VoiceSessionReplaceEvent
+            {
+                ChannelId = previousChannelId.Value,
+                SessionId = sessionId ?? string.Empty
             });
         }
 
@@ -147,6 +164,7 @@ public class VoiceSignallingApi
         TokenService tokenService,
         PlanetMemberService memberService,
         NodeLifecycleService nodeLifecycleService,
+        VoiceStateService voiceStateService,
         long channelId,
         long targetUserId)
     {
@@ -171,6 +189,55 @@ public class VoiceSignallingApi
                 TargetUserId = validation.TargetMember.UserId,
                 Action = VoiceModerationActionType.Kick
             });
+
+        // Remove kicked user from voice state
+        var dbChannel = await db.Channels.FindAsync(channelId);
+        if (dbChannel?.PlanetId is not null)
+        {
+            await voiceStateService.UserLeaveVoiceChannelAsync(
+                targetUserId, channelId, dbChannel.PlanetId.Value);
+        }
+
+        return Results.Ok();
+    }
+
+    public static async Task<IResult> LeaveVoiceChannel(
+        ValourDb db,
+        TokenService tokenService,
+        PlanetMemberService memberService,
+        VoiceStateService voiceStateService,
+        long channelId)
+    {
+        var authToken = await tokenService.GetCurrentTokenAsync();
+        if (authToken is null)
+            return ValourResult.InvalidToken();
+
+        var dbChannel = await db.Channels.FindAsync(channelId);
+        if (dbChannel is null || !ISharedChannel.VoiceChannelTypes.Contains(dbChannel.ChannelType))
+            return ValourResult.NotFound("Channel does not exist.");
+
+        if (!ISharedChannel.IsPlanetCallType(dbChannel.ChannelType) || dbChannel.PlanetId is null)
+            return ValourResult.BadRequest("Only planet voice/video channels are supported.");
+
+        var member = await memberService.GetByUserAsync(authToken.UserId, dbChannel.PlanetId.Value);
+        if (member is null)
+            return ValourResult.NotPlanetMember();
+
+        await voiceStateService.UserLeaveVoiceChannelAsync(
+            authToken.UserId, channelId, dbChannel.PlanetId.Value);
+
+        return Results.Ok();
+    }
+
+    public static async Task<IResult> VoiceHeartbeat(
+        TokenService tokenService,
+        VoiceStateService voiceStateService)
+    {
+        var authToken = await tokenService.GetCurrentTokenAsync();
+        if (authToken is null)
+            return ValourResult.InvalidToken();
+
+        await voiceStateService.RefreshVoiceHeartbeatAsync(authToken.UserId);
 
         return Results.Ok();
     }
