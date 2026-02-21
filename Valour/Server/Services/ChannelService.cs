@@ -1162,6 +1162,7 @@ public class ChannelService
             .Where(x => !x.IsDeleted &&
                         x.PlanetId != null &&
                         (x.ChannelType == ChannelTypeEnum.PlanetVoice || x.ChannelType == ChannelTypeEnum.PlanetVideo))
+            .Where(x => _db.Planets.Any(p => p.Id == x.PlanetId))
             .Where(x => x.AssociatedChatChannelId == null ||
                         !_db.Channels.Any(y => y.Id == x.AssociatedChatChannelId && !y.IsDeleted))
             .OrderBy(x => x.PlanetId)

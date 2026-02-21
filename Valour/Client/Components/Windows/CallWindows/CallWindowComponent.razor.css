@@ -7,16 +7,37 @@
     overflow: hidden;
 }
 
+.call-window-layout.dragging ::deep * {
+    pointer-events: none;
+}
+
+.call-window-layout.dragging .call-window-splitter {
+    pointer-events: auto;
+}
+
 .call-window-top {
-    flex: 1 1 62%;
     min-height: 180px;
     min-width: 0;
-    border-bottom: 1px solid var(--slight-tint);
     overflow: hidden;
 }
 
+.call-window-splitter {
+    flex: 0 0 6px;
+    cursor: row-resize;
+    background: transparent;
+    transition: background-color 0.15s ease;
+    border-top: 1px solid var(--slight-tint);
+    border-bottom: 1px solid transparent;
+}
+
+.call-window-splitter:hover,
+.call-window-layout.dragging .call-window-splitter {
+    background: rgba(55, 164, 206, 0.18);
+    border-top-color: rgba(55, 164, 206, 0.35);
+    border-bottom-color: rgba(55, 164, 206, 0.35);
+}
+
 .call-window-bottom {
-    flex: 1 1 38%;
     min-height: 220px;
     min-width: 0;
     overflow: hidden;
@@ -40,12 +61,4 @@
 
 .call-window-empty-state i {
     font-size: 22px;
-}
-
-.mobile .call-window-top {
-    flex: 1 1 56%;
-}
-
-.mobile .call-window-bottom {
-    flex: 1 1 44%;
 }

@@ -14,13 +14,14 @@ else if (_callChannel is null)
 }
 else
 {
-    <div class="call-window-layout">
-        <div class="call-window-top">
+    <div class="call-window-layout @(_dragging ? "dragging" : "")" @ref="_containerRef">
+        <div class="call-window-top" style="flex: 0 0 @(_splitPercent)%;">
             <CallPanelComponent Channel="_callChannel"
                                 VideoMode="@(_callChannel.ChannelType == ChannelTypeEnum.PlanetVideo)"
                                 OnLeaveRequested="OnLeaveRequestedAsync" />
         </div>
-        <div class="call-window-bottom">
+        <div class="call-window-splitter" @onmousedown="OnSplitterMouseDown"></div>
+        <div class="call-window-bottom" style="flex: 1 1 0%;">
             @if (_chatChannel is null || _embeddedChatContent is null)
             {
                 <div class="call-window-empty-state">
@@ -45,6 +46,12 @@ else
     private Channel? _chatChannel;
     private ChatWindowComponent.Content? _embeddedChatContent;
     private bool _loading = true;
+
+    private ElementReference _containerRef;
+    private float _splitRatio = 0.62f;
+    private string _splitPercent => (_splitRatio * 100f).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+    private bool _dragging;
+    private float _containerHeight;
 
     protected override async Task OnInitializedAsync()
     {
@@ -122,6 +129,37 @@ else
         {
             _loading = false;
         }
+    }
+
+    private async Task OnSplitterMouseDown(MouseEventArgs e)
+    {
+        var rect = await BrowserUtils.GetElementBoundingRectAsync(_containerRef);
+        _containerHeight = (float)rect.Height;
+        if (_containerHeight <= 0)
+            return;
+
+        _dragging = true;
+        MouseListener.SubscribeMouseMove(OnSplitterMouseMove);
+        MouseListener.SubscribeMouseUp(OnSplitterMouseUp);
+        await ReRender();
+    }
+
+    private async Task OnSplitterMouseMove(MousePosition e)
+    {
+        if (_containerHeight <= 0)
+            return;
+
+        _splitRatio += e.DeltaY / _containerHeight;
+        _splitRatio = Math.Clamp(_splitRatio, 0.2f, 0.8f);
+        await ReRender();
+    }
+
+    private async Task OnSplitterMouseUp(MouseUpEvent e)
+    {
+        _dragging = false;
+        MouseListener.UnsubscribeMouseMove(OnSplitterMouseMove);
+        MouseListener.UnsubscribeMouseUp(OnSplitterMouseUp);
+        await ReRender();
     }
 
     private async Task OnLeaveRequestedAsync()
