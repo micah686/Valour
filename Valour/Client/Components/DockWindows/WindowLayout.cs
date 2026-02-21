@@ -510,6 +510,9 @@ public class WindowLayout
 
         // Re-render layouts
         await DockComponent.NotifyLayoutChanged();
+
+        // Notify the dropped tab it has been (re)opened so planet connections are restored
+        await startingTab.NotifyOpened();
     }
 
     public async Task RemoveChild(WindowLayout child)
@@ -517,21 +520,23 @@ public class WindowLayout
         // Both children get removed but the other one becomes the tab stack
         if (ChildOne == child)
         {
-            // Take tabs from child
+            // Take tabs and focus from surviving child
             Tabs = ChildTwo.Tabs;
+            FocusedTab = ChildTwo.FocusedTab;
             ChildTwo.Parent = null;
             ChildTwo = null;
-            
+
             // Remove other child
             ChildOne = null;
         }
         else if (ChildTwo == child)
         {
-            // Take tabs from child
+            // Take tabs and focus from surviving child
             Tabs = ChildOne.Tabs;
+            FocusedTab = ChildOne.FocusedTab;
             ChildOne.Parent = null;
             ChildOne = null;
-            
+
             // Remove other child
             ChildTwo = null;
         }
@@ -540,7 +545,7 @@ public class WindowLayout
             Console.WriteLine("Tried to remove a child that is not a child of this layout.");
             return;
         }
-        
+
         // Remove split
         Split = null;
         
