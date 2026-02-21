@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using StackExchange.Redis;
 using Valour.Server.Redis;
 using Valour.Shared.Models;
@@ -13,6 +14,29 @@ public class VoiceStateService
 
     private static readonly TimeSpan UserKeyTtl = TimeSpan.FromSeconds(120);
 
+    /// <summary>
+    /// Per-user lock to serialize join/leave operations and prevent races.
+    /// </summary>
+    private static readonly ConcurrentDictionary<long, SemaphoreSlim> UserLocks = new();
+
+    /// <summary>
+    /// Lua script that atomically swaps the user's voice channel.
+    /// KEYS[1] = voice:user:{userId}
+    /// ARGV[1] = new channel ID
+    /// ARGV[2] = TTL in seconds
+    /// ARGV[3] = userId (for SET operations)
+    /// Returns the old channel ID (or nil).
+    /// </summary>
+    private const string JoinLuaScript = @"
+local oldChannelId = redis.call('GET', KEYS[1])
+redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+if oldChannelId and oldChannelId ~= ARGV[1] then
+    redis.call('SREM', 'voice:channel:' .. oldChannelId, ARGV[3])
+end
+redis.call('SADD', 'voice:channel:' .. ARGV[1], ARGV[3])
+return oldChannelId
+";
+
     public VoiceStateService(
         IConnectionMultiplexer redis,
         HostedPlanetService hostedPlanetService,
@@ -26,47 +50,47 @@ public class VoiceStateService
     }
 
     /// <summary>
-    /// Called when a user joins a voice channel. Returns the previous channel ID if the user was already in one.
+    /// Called when a user joins a voice channel. Returns the previous channel ID if the user was in a different one.
+    /// Uses a Lua script for atomic get+set+cleanup and a per-user lock to serialize operations.
     /// </summary>
     public async Task<long?> UserJoinVoiceChannelAsync(long userId, long channelId, long planetId)
     {
-        var db = _redis.GetDatabase(RedisDbTypes.Cluster);
-        var userKey = $"voice:user:{userId}";
-        long? previousChannelId = null;
-
-        // Check if user is already in a channel
-        var existing = await db.StringGetAsync(userKey);
-        if (existing.HasValue && long.TryParse((string?)existing, out var oldChannelId) && oldChannelId != channelId)
+        var userLock = UserLocks.GetOrAdd(userId, _ => new SemaphoreSlim(1, 1));
+        await userLock.WaitAsync();
+        try
         {
-            previousChannelId = oldChannelId;
+            var db = _redis.GetDatabase(RedisDbTypes.Cluster);
+            var userKey = $"voice:user:{userId}";
 
-            // Remove from old channel set
-            await db.SetRemoveAsync($"voice:channel:{oldChannelId}", userId);
+            // Atomic: get old channel, set new channel+TTL, move between channel sets
+            var result = await db.ScriptEvaluateAsync(
+                JoinLuaScript,
+                new RedisKey[] { userKey },
+                new RedisValue[] { channelId, (int)UserKeyTtl.TotalSeconds, userId });
 
-            // Update HostedPlanet for old channel (may be on same planet)
-            var oldHosted = await _hostedPlanetService.GetRequiredAsync(planetId);
-            if (oldHosted is not null)
+            long? previousChannelId = null;
+            var oldValue = (string?)result;
+            if (oldValue is not null && long.TryParse(oldValue, out var oldChannelId) && oldChannelId != channelId)
             {
+                previousChannelId = oldChannelId;
+
+                // Update HostedPlanet for old channel
+                var oldHosted = await _hostedPlanetService.GetRequiredAsync(planetId);
                 oldHosted.RemoveVoiceParticipant(oldChannelId, userId);
                 BroadcastChannelParticipants(oldHosted, oldChannelId, planetId);
             }
-        }
 
-        // Set user key with TTL
-        await db.StringSetAsync(userKey, channelId, UserKeyTtl);
-
-        // Add to channel set
-        await db.SetAddAsync($"voice:channel:{channelId}", userId);
-
-        // Update HostedPlanet
-        var hosted = await _hostedPlanetService.GetRequiredAsync(planetId);
-        if (hosted is not null)
-        {
+            // Update HostedPlanet for new channel
+            var hosted = await _hostedPlanetService.GetRequiredAsync(planetId);
             hosted.AddVoiceParticipant(channelId, userId);
             BroadcastChannelParticipants(hosted, channelId, planetId);
-        }
 
-        return previousChannelId;
+            return previousChannelId;
+        }
+        finally
+        {
+            userLock.Release();
+        }
     }
 
     /// <summary>

@@ -907,14 +907,31 @@
 
     private async Task SafeLeaveRoomInternalAsync(bool clearChannel)
     {
-        // Capture channel ID before any state changes
+        // Capture channel ID and joined state before any state changes
         var leaveChannelId = ActiveChannel?.Id;
+        var wasJoined = _joined;
+
+        // Notify server FIRST — before RTK cleanup which may hang during tab disposal.
+        // This ensures the participant list updates even if JS interop fails.
+        if (wasJoined && leaveChannelId is not null && Client.PrimaryNode is not null)
+        {
+            try
+            {
+                await Client.PrimaryNode.PostAsync(
+                    $"api/voice/realtimekit/channels/{leaveChannelId}/leave", new { })
+                    .WaitAsync(TimeSpan.FromSeconds(3));
+            }
+            catch
+            {
+                // Ignore leave notification failures during teardown.
+            }
+        }
 
         if (_rtk is not null)
         {
             try
             {
-                if (_joined)
+                if (wasJoined)
                 {
                     await _rtk.LeaveRoomAsync().WaitAsync(LeaveTimeout);
                 }
@@ -931,21 +948,6 @@
 
         await StopHeartbeatLoopAsync();
         await StopParticipantRefreshLoopAsync();
-
-        // Notify server we left (awaited with timeout so it completes before disposal)
-        if (leaveChannelId is not null && Client.PrimaryNode is not null)
-        {
-            try
-            {
-                await Client.PrimaryNode.PostAsync(
-                    $"api/voice/realtimekit/channels/{leaveChannelId}/leave", new { })
-                    .WaitAsync(TimeSpan.FromSeconds(3));
-            }
-            catch
-            {
-                // Ignore leave notification failures during teardown.
-            }
-        }
 
         _joined = false;
         _connecting = false;

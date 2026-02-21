@@ -71,16 +71,14 @@ public class VoiceSignallingApi
         var previousChannelId = await voiceStateService.UserJoinVoiceChannelAsync(
             authToken.UserId, channelId, dbChannel.PlanetId.Value);
 
-        if (!string.IsNullOrWhiteSpace(sessionId))
+        // Always send session replace for this channel to eject any stale RTK peers
+        coreHubService.NotifyVoiceSessionReplace(authToken.UserId, new VoiceSessionReplaceEvent
         {
-            coreHubService.NotifyVoiceSessionReplace(authToken.UserId, new VoiceSessionReplaceEvent
-            {
-                ChannelId = channel.Id,
-                SessionId = sessionId
-            });
-        }
+            ChannelId = channel.Id,
+            SessionId = sessionId ?? string.Empty
+        });
 
-        // If user was in a different channel, also send session replace for the old channel
+        // If user was in a different channel, also eject them from the old channel
         if (previousChannelId.HasValue && previousChannelId.Value != channelId)
         {
             coreHubService.NotifyVoiceSessionReplace(authToken.UserId, new VoiceSessionReplaceEvent

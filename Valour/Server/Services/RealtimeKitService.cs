@@ -169,6 +169,60 @@ public class RealtimeKitService
             "add participant");
     }
 
+    /// <summary>
+    /// Returns a snapshot of all channel → meeting ID mappings currently tracked.
+    /// </summary>
+    public Dictionary<long, string> GetTrackedChannelMeetingIds()
+    {
+        return new Dictionary<long, string>(_meetingIdsByChannel);
+    }
+
+    /// <summary>
+    /// Removes a channel → meeting ID mapping (e.g. when the meeting is no longer active).
+    /// </summary>
+    public void RemoveMeetingMapping(long channelId)
+    {
+        _meetingIdsByChannel.TryRemove(channelId, out _);
+    }
+
+    /// <summary>
+    /// Fetches all LIVE sessions for a specific meeting from Cloudflare.
+    /// </summary>
+    public async Task<TaskResult<List<CloudflareSessionInfo>>> GetLiveSessionsForMeetingAsync(string meetingId)
+    {
+        if (!IsConfigured)
+            return TaskResult<List<CloudflareSessionInfo>>.FromFailure("RealtimeKit is not configured.");
+
+        var endpoint = BuildEndpoint($"sessions?associated_id={meetingId}&status=LIVE&per_page=100");
+        var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
+        request.Headers.Authorization =
+            new AuthenticationHeaderValue("Bearer", CloudflareConfig.Instance.RealtimeApiToken);
+
+        return await SendAsync<CloudflareSessionsListResult, List<CloudflareSessionInfo>>(
+            request,
+            data => data.Sessions ?? new List<CloudflareSessionInfo>(),
+            "list live sessions");
+    }
+
+    /// <summary>
+    /// Fetches all participants for a specific session from Cloudflare.
+    /// </summary>
+    public async Task<TaskResult<List<CloudflareSessionParticipantInfo>>> GetSessionParticipantsAsync(string sessionId)
+    {
+        if (!IsConfigured)
+            return TaskResult<List<CloudflareSessionParticipantInfo>>.FromFailure("RealtimeKit is not configured.");
+
+        var endpoint = BuildEndpoint($"sessions/{sessionId}/participants?per_page=500");
+        var request = new HttpRequestMessage(HttpMethod.Get, endpoint);
+        request.Headers.Authorization =
+            new AuthenticationHeaderValue("Bearer", CloudflareConfig.Instance.RealtimeApiToken);
+
+        return await SendAsync<CloudflareSessionParticipantsResult, List<CloudflareSessionParticipantInfo>>(
+            request,
+            data => data.Participants ?? new List<CloudflareSessionParticipantInfo>(),
+            "list session participants");
+    }
+
     private async Task<TaskResult<TOut>> SendAsync<TCloudflare, TOut>(
         HttpRequestMessage request,
         Func<TCloudflare, TOut> map,
@@ -299,5 +353,61 @@ public class RealtimeKitService
 
         [JsonPropertyName("message")]
         public string Message { get; set; } = string.Empty;
+    }
+
+    private sealed class CloudflareSessionsListResult
+    {
+        [JsonPropertyName("sessions")]
+        public List<CloudflareSessionInfo>? Sessions { get; set; }
+    }
+
+    private sealed class CloudflareSessionParticipantsResult
+    {
+        [JsonPropertyName("participants")]
+        public List<CloudflareSessionParticipantInfo>? Participants { get; set; }
+    }
+
+    public sealed class CloudflareSessionInfo
+    {
+        [JsonPropertyName("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonPropertyName("associated_id")]
+        public string AssociatedId { get; set; } = string.Empty;
+
+        [JsonPropertyName("status")]
+        public string Status { get; set; } = string.Empty;
+
+        [JsonPropertyName("live_participants")]
+        public int LiveParticipants { get; set; }
+    }
+
+    public sealed class CloudflareSessionParticipantInfo
+    {
+        [JsonPropertyName("id")]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonPropertyName("custom_participant_id")]
+        public string CustomParticipantId { get; set; } = string.Empty;
+
+        [JsonPropertyName("left_at")]
+        public string? LeftAt { get; set; }
+
+        /// <summary>
+        /// Extracts the Valour user ID from the custom_participant_id format "{userId}:{guid}".
+        /// Returns null if the format is invalid.
+        /// </summary>
+        public long? ExtractUserId()
+        {
+            if (string.IsNullOrEmpty(CustomParticipantId))
+                return null;
+
+            var colonIndex = CustomParticipantId.IndexOf(':');
+            if (colonIndex <= 0)
+                return null;
+
+            var userIdStr = CustomParticipantId[..colonIndex];
+            return long.TryParse(userIdStr, out var userId) ? userId : null;
+        }
     }
 }
