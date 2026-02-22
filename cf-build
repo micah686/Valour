@@ -44,6 +44,7 @@ cp -R Valour/Client/wwwroot/. "$OUTPUT_DIR"/_content/Valour.Client/
 # Explicit runtime API origin for static Pages deployments.
 # Set VALOUR_API_ORIGIN to override, or set it to an empty string for same-origin.
 API_ORIGIN="${VALOUR_API_ORIGIN-https://app.valour.gg/}"
+echo "Using VALOUR_API_ORIGIN=${API_ORIGIN}"
 printf 'window.valourRuntimeConfig = window.valourRuntimeConfig || {};\nwindow.valourRuntimeConfig.apiOrigin = "%s";\n' "$API_ORIGIN" > "$OUTPUT_DIR"/_content/Valour.Client/js/valour-runtime-config.js
 
 # The Blazor host page currently lives in the shared Valour.Client project, not Client.Blazor/wwwroot.
@@ -61,3 +62,15 @@ done
 
 # SPA fallback for client-side routing (prevents refresh/deep-link 404s on Pages).
 printf '/* /index.html 200\n' > "$OUTPUT_DIR/_redirects"
+
+# Prevent stale host page/runtime config when switching deploy env vars.
+cat > "$OUTPUT_DIR/_headers" <<'EOF'
+/index.html
+  Cache-Control: no-store
+
+/_content/Valour.Client/js/valour-runtime-config.js
+  Cache-Control: no-store
+
+/service-worker.js
+  Cache-Control: no-cache
+EOF

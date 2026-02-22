@@ -48,6 +48,9 @@ else
 
     private bool _triedInitialLogin;
     private bool _needsErrorReportingCheck;
+    private bool _browserReady;
+    private bool _firstRenderReady;
+    private bool _startupInitializationStarted;
 
     protected override async Task OnInitializedAsync()
     {
@@ -104,6 +107,9 @@ else
             "blazorFuncs.registerClient",
             DotNetObjectReference.Create(this)
         );
+
+        _browserReady = true;
+        await TryCompleteStartupInitializationAsync();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -115,44 +121,55 @@ else
 
             DeviceInfo.IsMobile = isMobile;
             DeviceInfo.IsEmbedded = isEmbedded;
-
-            if (!Client.IsLoggedIn)
-            {
-                var localToken = await LocalStorage.GetStringAsync("token");
-
-                if (!string.IsNullOrWhiteSpace(localToken))
-                {
-                    var result = await Client.InitializeUser(localToken);
-
-                    if (result.Code == 401)
-                    {
-                        // Clear cookie
-                        await LocalStorage.RemoveAsync("token");
-                    }
-
-                    if (result.Success) {
-                        Log("App", $"Auto-logged user {Client.Me.Name}", "magenta");
-                        _needsErrorReportingCheck = true;
-                    }
-                }
-            }
-
-            // Ensure PrimaryNode is set up for anonymous API calls (e.g., invite pages)
-            if (Client.PrimaryNode is null)
-            {
-                await Client.NodeService.SetupPrimaryNodeAsync();
-            }
-
-            _triedInitialLogin = true;
-            Log("App", $"Tried initial login. Status: {Client.IsLoggedIn}", "magenta");
-
-            StateHasChanged();
+            _firstRenderReady = true;
+            await TryCompleteStartupInitializationAsync();
         }
         else if (_needsErrorReportingCheck)
         {
             _needsErrorReportingCheck = false;
             await CheckErrorReportingPreference();
         }
+    }
+
+    private async Task TryCompleteStartupInitializationAsync()
+    {
+        if (!_browserReady || !_firstRenderReady || _startupInitializationStarted)
+            return;
+
+        _startupInitializationStarted = true;
+
+        if (!Client.IsLoggedIn)
+        {
+            var localToken = await LocalStorage.GetStringAsync("token");
+
+            if (!string.IsNullOrWhiteSpace(localToken))
+            {
+                var result = await Client.InitializeUser(localToken);
+
+                if (result.Code == 401)
+                {
+                    // Clear cookie
+                    await LocalStorage.RemoveAsync("token");
+                }
+
+                if (result.Success)
+                {
+                    Log("App", $"Auto-logged user {Client.Me.Name}", "magenta");
+                    _needsErrorReportingCheck = true;
+                }
+            }
+        }
+
+        // Ensure PrimaryNode is set up for anonymous API calls (e.g., invite pages)
+        if (Client.PrimaryNode is null)
+        {
+            await Client.NodeService.SetupPrimaryNodeAsync();
+        }
+
+        _triedInitialLogin = true;
+        Log("App", $"Tried initial login. Status: {Client.IsLoggedIn}", "magenta");
+
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task CheckErrorReportingPreference()
