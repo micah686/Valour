@@ -13,6 +13,7 @@ public class VoiceStateService
     private readonly ILogger<VoiceStateService> _logger;
 
     private static readonly TimeSpan UserKeyTtl = TimeSpan.FromSeconds(120);
+    private const string UserSessionKeyPrefix = "voice:user:session:";
 
     /// <summary>
     /// Per-user lock to serialize join/leave operations and prevent races.
@@ -53,7 +54,7 @@ return oldChannelId
     /// Called when a user joins a voice channel. Returns the previous channel ID if the user was in a different one.
     /// Uses a Lua script for atomic get+set+cleanup and a per-user lock to serialize operations.
     /// </summary>
-    public async Task<long?> UserJoinVoiceChannelAsync(long userId, long channelId, long planetId)
+    public async Task<long?> UserJoinVoiceChannelAsync(long userId, long channelId, long planetId, string? sessionId = null)
     {
         var userLock = UserLocks.GetOrAdd(userId, _ => new SemaphoreSlim(1, 1));
         await userLock.WaitAsync();
@@ -61,6 +62,7 @@ return oldChannelId
         {
             var db = _redis.GetDatabase(RedisDbTypes.Cluster);
             var userKey = $"voice:user:{userId}";
+            var userSessionKey = $"{UserSessionKeyPrefix}{userId}";
 
             // Atomic: get old channel, set new channel+TTL, move between channel sets
             var result = await db.ScriptEvaluateAsync(
@@ -85,6 +87,15 @@ return oldChannelId
             hosted.AddVoiceParticipant(channelId, userId);
             BroadcastChannelParticipants(hosted, channelId, planetId);
 
+            if (string.IsNullOrWhiteSpace(sessionId))
+            {
+                await db.KeyDeleteAsync(userSessionKey);
+            }
+            else
+            {
+                await db.StringSetAsync(userSessionKey, sessionId, UserKeyTtl);
+            }
+
             return previousChannelId;
         }
         finally
@@ -96,16 +107,34 @@ return oldChannelId
     /// <summary>
     /// Called when a user leaves a voice channel.
     /// </summary>
-    public async Task UserLeaveVoiceChannelAsync(long userId, long channelId, long planetId)
+    public async Task UserLeaveVoiceChannelAsync(long userId, long channelId, long planetId, string? sessionId = null)
     {
         var db = _redis.GetDatabase(RedisDbTypes.Cluster);
         var userKey = $"voice:user:{userId}";
+        var userSessionKey = $"{UserSessionKeyPrefix}{userId}";
+
+        if (!string.IsNullOrWhiteSpace(sessionId))
+        {
+            var currentSession = await db.StringGetAsync(userSessionKey);
+            if (currentSession.HasValue &&
+                !string.Equals((string?)currentSession, sessionId, StringComparison.Ordinal))
+            {
+                _logger.LogDebug(
+                    "Ignoring stale voice leave for user {UserId} in channel {ChannelId}. Session {SessionId} != {CurrentSessionId}",
+                    userId,
+                    channelId,
+                    sessionId,
+                    (string?)currentSession);
+                return;
+            }
+        }
 
         // Only delete user key if it still points to this channel
         var existing = await db.StringGetAsync(userKey);
         if (existing.HasValue && long.TryParse((string?)existing, out var currentChannelId) && currentChannelId == channelId)
         {
             await db.KeyDeleteAsync(userKey);
+            await db.KeyDeleteAsync(userSessionKey);
         }
 
         // Remove from channel set
@@ -128,6 +157,7 @@ return oldChannelId
         var db = _redis.GetDatabase(RedisDbTypes.Cluster);
         var userKey = $"voice:user:{userId}";
         await db.KeyExpireAsync(userKey, UserKeyTtl);
+        await db.KeyExpireAsync($"{UserSessionKeyPrefix}{userId}", UserKeyTtl);
     }
 
     /// <summary>

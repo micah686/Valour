@@ -60,7 +60,7 @@ public class VoiceSignallingApi
 
         var displayName = $"{dbUser.Name}#{dbUser.Tag}";
         TaskResult<RealtimeKitVoiceTokenResponse> tokenResult =
-            await realtimeKitService.CreateParticipantTokenAsync(channel, authToken.UserId, displayName);
+            await realtimeKitService.CreateParticipantTokenAsync(channel, authToken.UserId, displayName, sessionId);
 
         if (!tokenResult.Success || tokenResult.Data is null)
         {
@@ -69,7 +69,14 @@ public class VoiceSignallingApi
 
         // Track voice state in Redis + HostedPlanet
         var previousChannelId = await voiceStateService.UserJoinVoiceChannelAsync(
-            authToken.UserId, channelId, dbChannel.PlanetId.Value);
+            authToken.UserId, channelId, dbChannel.PlanetId.Value, sessionId);
+
+        // Server-side enforcement/backstop: ensure stale RTK media from a previous channel is torn down
+        // before returning the new token response.
+        if (previousChannelId.HasValue && previousChannelId.Value != channelId)
+        {
+            await realtimeKitService.KickUserFromTrackedChannelAsync(previousChannelId.Value, authToken.UserId);
+        }
 
         // Always send session replace for this channel to eject any stale RTK peers
         coreHubService.NotifyVoiceSessionReplace(authToken.UserId, new VoiceSessionReplaceEvent
@@ -203,8 +210,10 @@ public class VoiceSignallingApi
         ValourDb db,
         TokenService tokenService,
         PlanetMemberService memberService,
+        RealtimeKitService realtimeKitService,
         VoiceStateService voiceStateService,
-        long channelId)
+        long channelId,
+        string? sessionId)
     {
         var authToken = await tokenService.GetCurrentTokenAsync();
         if (authToken is null)
@@ -222,7 +231,11 @@ public class VoiceSignallingApi
             return ValourResult.NotPlanetMember();
 
         await voiceStateService.UserLeaveVoiceChannelAsync(
-            authToken.UserId, channelId, dbChannel.PlanetId.Value);
+            authToken.UserId, channelId, dbChannel.PlanetId.Value, sessionId);
+
+        // Best-effort exact RTK teardown. With session-aware participant IDs this avoids
+        // stale leave calls kicking a newer session from another window.
+        await realtimeKitService.KickUserSessionFromTrackedChannelAsync(channelId, authToken.UserId, sessionId);
 
         return Results.Ok();
     }

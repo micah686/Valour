@@ -226,6 +226,120 @@ function stopStreamTracks(stream) {
     }
 }
 
+function stopMediaTrack(track) {
+    if (!track || typeof track.stop !== "function") {
+        return;
+    }
+
+    try {
+        track.stop();
+    } catch {
+        // Ignore track stop failures during teardown.
+    }
+}
+
+function collectLocalTracks(activeMeeting) {
+    const self = activeMeeting?.self;
+    if (!self) {
+        return [];
+    }
+
+    const tracks = [
+        self.audioTrack,
+        self.rawAudioTrack,
+        self.videoTrack,
+        self.rawVideoTrack,
+        self.screenShareTrack,
+        self.screenShareAudioTrack,
+        self.screenShareTracks?.audio,
+        self.screenShareTracks?.video,
+        self.screenshareTrack,
+        self.screenshareAudioTrack,
+        self.screenshareTracks?.audio,
+        self.screenshareTracks?.video
+    ].filter(Boolean);
+
+    const uniqueTracks = [];
+    const seenTrackIds = new Set();
+
+    for (const track of tracks) {
+        const trackId = typeof track.id === "string" && track.id.length > 0 ? track.id : null;
+        if (trackId && seenTrackIds.has(trackId)) {
+            continue;
+        }
+
+        if (trackId) {
+            seenTrackIds.add(trackId);
+        }
+
+        uniqueTracks.push(track);
+    }
+
+    return uniqueTracks;
+}
+
+async function teardownMeeting(activeMeeting, endCall = false) {
+    if (!activeMeeting) {
+        return;
+    }
+
+    const self = activeMeeting?.self;
+    const localTracks = collectLocalTracks(activeMeeting);
+
+    // Stop local capture immediately so the mic/camera can't remain hot if SDK leave hangs.
+    for (const track of localTracks) {
+        stopMediaTrack(track);
+    }
+
+    try {
+        if (self?.screenShareEnabled && typeof self.disableScreenShare === "function") {
+            await withTimeout(
+                self.disableScreenShare(),
+                1000,
+                "Timed out disabling screenshare during teardown."
+            );
+        }
+    } catch {
+        // Ignore best-effort teardown failures.
+    }
+
+    try {
+        if (self?.videoEnabled && typeof self.disableVideo === "function") {
+            await withTimeout(
+                self.disableVideo(),
+                1000,
+                "Timed out disabling video during teardown."
+            );
+        }
+    } catch {
+        // Ignore best-effort teardown failures.
+    }
+
+    try {
+        if (self?.audioEnabled && typeof self.disableAudio === "function") {
+            await withTimeout(
+                self.disableAudio(),
+                1000,
+                "Timed out disabling audio during teardown."
+            );
+        }
+    } catch {
+        // Ignore best-effort teardown failures.
+    }
+
+    try {
+        if (typeof activeMeeting.leaveRoom === "function") {
+            await withTimeout(
+                activeMeeting.leaveRoom(endCall),
+                2000,
+                "Timed out leaving room during teardown."
+            );
+        }
+    } catch {
+        // Ignore best-effort teardown failures.
+    }
+}
+
 async function requestMicrophonePermissionInternal() {
     return await requestMediaPermissionInternal(
         canRequestMicrophoneAccess(),
@@ -366,10 +480,14 @@ export async function leaveRoom(endCall = false) {
         return;
     }
 
+    const activeMeeting = meeting;
+    // Clear the shared reference first so repeated teardown calls don't race on the same instance.
+    meeting = null;
+
     try {
-        await meeting.leaveRoom(endCall);
-    } finally {
-        meeting = null;
+        await teardownMeeting(activeMeeting, endCall);
+    } catch {
+        // Teardown is best-effort; local tracks are already stopped above.
     }
 }
 
@@ -801,7 +919,15 @@ export async function invoke(path, args) {
 }
 
 export function reset() {
+    if (!meeting) {
+        return;
+    }
+
+    const activeMeeting = meeting;
     meeting = null;
+
+    // Fire-and-forget cleanup for disposal/unload paths where JS interop may be timing out.
+    void teardownMeeting(activeMeeting, false);
 }
 
 export function sdkLoaded() {

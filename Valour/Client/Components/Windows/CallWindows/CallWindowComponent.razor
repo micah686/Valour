@@ -1,5 +1,7 @@
 @inherits WindowContentComponent<Channel>
 @using Channel = Valour.Sdk.Models.Channel
+@implements IAsyncDisposable
+@inject GlobalCallSessionService CallSession
 
 @if (_loading)
 {
@@ -17,8 +19,7 @@ else
     <div class="call-window-layout @(_dragging ? "dragging" : "")" @ref="_containerRef">
         <div class="call-window-top" style="flex: 0 0 @(_splitPercent)%;">
             <CallPanelComponent Channel="_callChannel"
-                                VideoMode="@(_callChannel.ChannelType == ChannelTypeEnum.PlanetVideo)"
-                                OnLeaveRequested="OnLeaveRequestedAsync" />
+                                VideoMode="@(_callChannel.ChannelType == ChannelTypeEnum.PlanetVideo)" />
         </div>
         <div class="call-window-splitter" @onmousedown="OnSplitterMouseDown"></div>
         <div class="call-window-bottom" style="flex: 1 1 0%;">
@@ -162,14 +163,6 @@ else
         await ReRender();
     }
 
-    private async Task OnLeaveRequestedAsync()
-    {
-        if (WindowCtx?.Tab?.Component is not null)
-        {
-            await WindowCtx.Tab.Component.CloseAsync();
-        }
-    }
-
     public class StateData
     {
         public long? PlanetId { get; set; }
@@ -218,5 +211,17 @@ else
             AutoScroll = false,
             Data = channel
         };
+    }
+
+    async ValueTask IAsyncDisposable.DisposeAsync()
+    {
+        var windowChannelId = (_callChannel ?? Data)?.Id;
+        if (windowChannelId is null)
+            return;
+
+        if (CallSession.ActiveChannel?.Id != windowChannelId.Value)
+            return;
+
+        await CallSession.LeaveAsync(clearChannel: true);
     }
 }

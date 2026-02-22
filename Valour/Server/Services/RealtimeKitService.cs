@@ -18,6 +18,7 @@ public class RealtimeKitService
 
     private readonly ConcurrentDictionary<long, string> _meetingIdsByChannel = new();
     private readonly ConcurrentDictionary<long, SemaphoreSlim> _channelLocks = new();
+    private readonly ConcurrentDictionary<long, SemaphoreSlim> _userJoinLocks = new();
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -50,7 +51,8 @@ public class RealtimeKitService
     public async Task<TaskResult<RealtimeKitVoiceTokenResponse>> CreateParticipantTokenAsync(
         Channel channel,
         long userId,
-        string displayName)
+        string displayName,
+        string? sessionId)
     {
         if (!IsConfigured)
         {
@@ -58,30 +60,41 @@ public class RealtimeKitService
                 "RealtimeKit is not configured on the server.");
         }
 
-        var meetingResult = await GetOrCreateMeetingIdAsync(channel);
-        if (!meetingResult.Success)
-            return TaskResult<RealtimeKitVoiceTokenResponse>.FromFailure(meetingResult);
+        var userJoinLock = _userJoinLocks.GetOrAdd(userId, static _ => new SemaphoreSlim(1, 1));
+        await userJoinLock.WaitAsync();
 
-        // Always kick any existing participant for this user before adding a new one
-        var customParticipantId = userId.ToString();
-        await KickParticipantFromMeetingAsync(meetingResult.Data, customParticipantId);
-
-        var participantResult = await AddParticipantAsync(
-            meetingResult.Data,
-            customParticipantId,
-            displayName,
-            $"{{\"channelId\":\"{channel.Id}\",\"userId\":\"{userId}\"}}",
-            channel.ChannelType);
-
-        if (!participantResult.Success)
-            return TaskResult<RealtimeKitVoiceTokenResponse>.FromFailure(participantResult);
-
-        return TaskResult<RealtimeKitVoiceTokenResponse>.FromData(new RealtimeKitVoiceTokenResponse
+        try
         {
-            MeetingId = meetingResult.Data,
-            ParticipantId = participantResult.Data.ParticipantId,
-            AuthToken = participantResult.Data.AuthToken
-        });
+            var meetingResult = await GetOrCreateMeetingIdAsync(channel);
+            if (!meetingResult.Success)
+                return TaskResult<RealtimeKitVoiceTokenResponse>.FromFailure(meetingResult);
+
+            // Always kick any existing participant sessions for this user in the same meeting before adding a new one.
+            await KickUserFromMeetingAsync(meetingResult.Data, userId);
+
+            var customParticipantId = BuildCustomParticipantId(userId, sessionId);
+
+            var participantResult = await AddParticipantAsync(
+                meetingResult.Data,
+                customParticipantId,
+                displayName,
+                BuildParticipantMetadata(channel.Id, userId, sessionId),
+                channel.ChannelType);
+
+            if (!participantResult.Success)
+                return TaskResult<RealtimeKitVoiceTokenResponse>.FromFailure(participantResult);
+
+            return TaskResult<RealtimeKitVoiceTokenResponse>.FromData(new RealtimeKitVoiceTokenResponse
+            {
+                MeetingId = meetingResult.Data,
+                ParticipantId = participantResult.Data.ParticipantId,
+                AuthToken = participantResult.Data.AuthToken
+            });
+        }
+        finally
+        {
+            userJoinLock.Release();
+        }
     }
 
     private async Task<TaskResult<string>> GetOrCreateMeetingIdAsync(Channel channel)
@@ -172,18 +185,128 @@ public class RealtimeKitService
             "add participant");
     }
 
+    private static string BuildCustomParticipantId(long userId, string? sessionId)
+    {
+        var normalizedSessionId = NormalizeSessionId(sessionId);
+        return string.IsNullOrWhiteSpace(normalizedSessionId)
+            ? userId.ToString()
+            : $"{userId}:{normalizedSessionId}";
+    }
+
+    private static string NormalizeSessionId(string? sessionId)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return string.Empty;
+
+        // Preserve a stable userId:sessionId format for downstream parsing.
+        return sessionId.Trim().Replace(':', '_');
+    }
+
+    private static string BuildParticipantMetadata(long channelId, long userId, string? sessionId)
+    {
+        var normalizedSessionId = NormalizeSessionId(sessionId);
+        return string.IsNullOrWhiteSpace(normalizedSessionId)
+            ? $"{{\"channelId\":\"{channelId}\",\"userId\":\"{userId}\"}}"
+            : $"{{\"channelId\":\"{channelId}\",\"userId\":\"{userId}\",\"sessionId\":\"{normalizedSessionId}\"}}";
+    }
+
     /// <summary>
-    /// Kicks a participant from the active session of a meeting via the Cloudflare API.
+    /// Best-effort cleanup: kicks all RTK sessions for a user in a tracked channel.
+    /// </summary>
+    public async Task KickUserFromTrackedChannelAsync(long channelId, long userId)
+    {
+        if (!_meetingIdsByChannel.TryGetValue(channelId, out var meetingId) || string.IsNullOrWhiteSpace(meetingId))
+            return;
+
+        await KickUserFromMeetingAsync(meetingId, userId);
+    }
+
+    /// <summary>
+    /// Best-effort cleanup: kicks the exact RTK session for a user when a sessionId is known.
+    /// Falls back to kicking all user sessions in the channel when no sessionId is provided.
+    /// </summary>
+    public async Task KickUserSessionFromTrackedChannelAsync(long channelId, long userId, string? sessionId)
+    {
+        if (!_meetingIdsByChannel.TryGetValue(channelId, out var meetingId) || string.IsNullOrWhiteSpace(meetingId))
+            return;
+
+        var normalizedSessionId = NormalizeSessionId(sessionId);
+        if (string.IsNullOrWhiteSpace(normalizedSessionId))
+        {
+            await KickUserFromMeetingAsync(meetingId, userId);
+            return;
+        }
+
+        await KickParticipantFromMeetingAsync(meetingId, BuildCustomParticipantId(userId, normalizedSessionId));
+    }
+
+    /// <summary>
+    /// Kicks all active RTK participants for the specified user from a meeting (across all live sessions).
     /// Failures are logged but not thrown — this is best-effort cleanup.
     /// </summary>
-    private async Task KickParticipantFromMeetingAsync(string meetingId, string customParticipantId)
+    private async Task KickUserFromMeetingAsync(string meetingId, long userId)
     {
+        try
+        {
+            var sessionsResult = await GetLiveSessionsForMeetingAsync(meetingId);
+            if (!sessionsResult.Success || sessionsResult.Data is null)
+                return;
+
+            var customParticipantIds = new HashSet<string>(StringComparer.Ordinal);
+
+            foreach (var session in sessionsResult.Data)
+            {
+                if (session is null || string.IsNullOrWhiteSpace(session.Id) || session.LiveParticipants <= 0)
+                    continue;
+
+                var participantsResult = await GetSessionParticipantsAsync(session.Id);
+                if (!participantsResult.Success || participantsResult.Data is null)
+                    continue;
+
+                foreach (var participant in participantsResult.Data)
+                {
+                    if (participant.ExtractUserId() != userId)
+                        continue;
+
+                    if (!string.IsNullOrWhiteSpace(participant.CustomParticipantId))
+                        customParticipantIds.Add(participant.CustomParticipantId);
+                }
+            }
+
+            if (customParticipantIds.Count == 0)
+                return;
+
+            await KickParticipantsFromMeetingAsync(meetingId, customParticipantIds);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Failed to kick existing participant sessions for user {UserId} from meeting {MeetingId}",
+                userId,
+                meetingId);
+        }
+    }
+
+    /// <summary>
+    /// Kicks one or more participants from the active session of a meeting via the Cloudflare API.
+    /// Failures are logged but not thrown — this is best-effort cleanup.
+    /// </summary>
+    private async Task KickParticipantsFromMeetingAsync(string meetingId, IEnumerable<string> customParticipantIds)
+    {
+        var ids = customParticipantIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        if (ids.Length == 0)
+            return;
+
         try
         {
             var endpoint = BuildEndpoint($"meetings/{meetingId}/active-session/kick");
             var payload = new KickParticipantRequest
             {
-                CustomParticipantIds = new[] { customParticipantId }
+                CustomParticipantIds = ids
             };
 
             var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
@@ -201,15 +324,20 @@ public class RealtimeKitService
             {
                 var body = await response.Content.ReadAsStringAsync();
                 _logger.LogDebug(
-                    "Kick participant {ParticipantId} from meeting {MeetingId} returned {Status}: {Body}",
-                    customParticipantId, meetingId, (int)response.StatusCode, body);
+                    "Kick participants {ParticipantIds} from meeting {MeetingId} returned {Status}: {Body}",
+                    string.Join(", ", ids), meetingId, (int)response.StatusCode, body);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to kick participant {ParticipantId} from meeting {MeetingId}",
-                customParticipantId, meetingId);
+            _logger.LogWarning(ex, "Failed to kick participants from meeting {MeetingId}: {ParticipantIds}",
+                meetingId, string.Join(", ", ids));
         }
+    }
+
+    private Task KickParticipantFromMeetingAsync(string meetingId, string customParticipantId)
+    {
+        return KickParticipantsFromMeetingAsync(meetingId, new[] { customParticipantId });
     }
 
     /// <summary>
@@ -447,7 +575,9 @@ public class RealtimeKitService
             if (string.IsNullOrEmpty(CustomParticipantId))
                 return null;
 
-            return long.TryParse(CustomParticipantId, out var userId) ? userId : null;
+            var delimiterIndex = CustomParticipantId.IndexOf(':');
+            var candidate = delimiterIndex > 0 ? CustomParticipantId[..delimiterIndex] : CustomParticipantId;
+            return long.TryParse(candidate, out var userId) ? userId : null;
         }
     }
 }
