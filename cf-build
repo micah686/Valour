@@ -51,6 +51,21 @@ printf 'window.valourRuntimeConfig = window.valourRuntimeConfig || {};\nwindow.v
 # Ensure Cloudflare Pages has a root index.html to serve.
 cp Valour/Client/wwwroot/index.html "$OUTPUT_DIR"/index.html
 
+# Replace literal build placeholders used by the app for cache-busting/version display.
+SHORT_HASH="${CF_PAGES_COMMIT_SHA:-}"
+if [ -z "$SHORT_HASH" ]; then
+  SHORT_HASH="$(git rev-parse --short=8 HEAD 2>/dev/null || true)"
+fi
+if [ -z "$SHORT_HASH" ]; then
+  SHORT_HASH="dev"
+fi
+SHORT_HASH="$(printf '%s' "$SHORT_HASH" | cut -c1-8)"
+echo "Using SHORTHASH=${SHORT_HASH}"
+export VALOUR_SHORT_HASH="$SHORT_HASH"
+grep -RIl '\$(SHORTHASH)' "$OUTPUT_DIR" 2>/dev/null | while IFS= read -r file; do
+  perl -pi -e 's/\$\(SHORTHASH\)/$ENV{VALOUR_SHORT_HASH}/g' "$file"
+done || true
+
 # Fail the build if the output is incomplete; otherwise Pages will serve index.html
 # via the SPA fallback and browsers will report MIME type errors for missing assets.
 for required in index.html _framework/blazor.webassembly.js manifest.json service-worker.js; do
