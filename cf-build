@@ -21,5 +21,9 @@ dotnet publish Valour/Client.Blazor/Valour.Client.Blazor.csproj -c Release -o "$
 mkdir -p "$OUTPUT_DIR"
 cp -R "$PUBLISH_DIR"/wwwroot/. "$OUTPUT_DIR"/
 
+# The Blazor host page currently lives in the shared Valour.Client project, not Client.Blazor/wwwroot.
+# Ensure Cloudflare Pages has a root index.html to serve.
+cp Valour/Client/wwwroot/index.html "$OUTPUT_DIR"/index.html
+
 # SPA fallback for client-side routing (prevents refresh/deep-link 404s on Pages).
 printf '/* /index.html 200\n' > "$OUTPUT_DIR/_redirects"
