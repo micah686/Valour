@@ -26,6 +26,11 @@ cp -R "$PUBLISH_DIR"/wwwroot/. "$OUTPUT_DIR"/
 mkdir -p "$OUTPUT_DIR"/_content/Valour.Client
 cp -R Valour/Client/wwwroot/. "$OUTPUT_DIR"/_content/Valour.Client/
 
+# Explicit runtime API origin for static Pages deployments.
+# Set VALOUR_API_ORIGIN to override, or set it to an empty string for same-origin.
+API_ORIGIN="${VALOUR_API_ORIGIN-https://app.valour.gg/}"
+printf 'window.valourRuntimeConfig = window.valourRuntimeConfig || {};\nwindow.valourRuntimeConfig.apiOrigin = "%s";\n' "$API_ORIGIN" > "$OUTPUT_DIR"/_content/Valour.Client/js/valour-runtime-config.js
+
 # The Blazor host page currently lives in the shared Valour.Client project, not Client.Blazor/wwwroot.
 # Ensure Cloudflare Pages has a root index.html to serve.
 cp Valour/Client/wwwroot/index.html "$OUTPUT_DIR"/index.html

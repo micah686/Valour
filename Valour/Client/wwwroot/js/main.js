@@ -79,6 +79,14 @@ window.getBrowserOrigin = function() {
     return window.location.origin;
 };
 
+window.getValourApiOrigin = function() {
+    const config = window["valourRuntimeConfig"];
+    if (!config || typeof config.apiOrigin !== "string")
+        return "";
+
+    return config.apiOrigin.trim();
+};
+
 function Log(message, color) {
     console.log("%c" + message, 'color: ' + color);
 }

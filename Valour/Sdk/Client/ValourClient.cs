@@ -139,15 +139,13 @@ public class ValourClient
     
     /// <summary>
     /// Sets the origin of the client. Should only be called
-    /// before nodes are initialized. Origins must NOT end in a slash.
+    /// before nodes are initialized. Origin is normalized to include a trailing slash.
     /// </summary>
     public void SetOrigin(string origin)
     {
-        // Cloudflare pages. Use main api endpoint.
-        if (origin.Contains(".valour.pages.dev"))
-            origin = "https://app.valour.gg";
-        
         BaseAddress = origin;
+        if (!BaseAddress.EndsWith('/'))
+            BaseAddress += '/';
         _httpClient = new HttpClient()
         {
             BaseAddress = new Uri(BaseAddress)

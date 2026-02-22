@@ -76,10 +76,23 @@ else
         {
             if (!USE_PROD)
             {
+                var apiOrigin = uriData.Origin;
+                try
+                {
+                    var configuredApiOrigin = await JsRuntime.InvokeAsync<string>("getValourApiOrigin");
+                    if (!string.IsNullOrWhiteSpace(configuredApiOrigin))
+                        apiOrigin = configuredApiOrigin;
+                }
+                catch
+                {
+                    // Host page does not expose an API origin override.
+                }
+
                 // Set the origin for the client
                 // We do this here because while the value is assumed in startup
                 // we have access to the JS runtime to get the actual value
-                Client.SetOrigin(uriData.Origin + "/");
+                Logger.Log("App", $"API origin is {apiOrigin}", "magenta");
+                Client.SetOrigin(apiOrigin);
             }
             else
             {
