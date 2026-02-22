@@ -1,10 +1,13 @@
 using Valour.Client.Messages;
 using Valour.Client.Storage;
+using Valour.Client;
 
 namespace Valour.Client.Device;
 
 public static class DevicePreferences
 {
+    public const string ErrorReportingEnabledStorageKey = "ErrorReportingEnabled";
+
     public static event Func<string?, Task>? OnMicrophoneDeviceIdChanged;
     public static event Func<string?, Task>? OnCameraDeviceIdChanged;
 
@@ -16,6 +19,7 @@ public static class DevicePreferences
 
     public static string? MicrophoneDeviceId { get; set; }
     public static string? CameraDeviceId { get; set; }
+    public static bool ErrorReportingEnabled { get; private set; }
 
     public static async Task SetMicrophoneDeviceId(string? deviceId, IAppStorage localStorage)
     {
@@ -35,6 +39,13 @@ public static class DevicePreferences
             await OnCameraDeviceIdChanged.Invoke(deviceId);
     }
 
+    public static async Task SetErrorReportingEnabled(bool isEnabled, IAppStorage localStorage)
+    {
+        ErrorReportingEnabled = isEnabled;
+        SentryGate.IsEnabled = isEnabled;
+        await localStorage.SetAsync(ErrorReportingEnabledStorageKey, isEnabled);
+    }
+
     public static async Task LoadPreferences(IAppStorage localStorage)
     {
         if (await localStorage.ContainsKeyAsync("AutoEmoji"))
@@ -51,6 +62,17 @@ public static class DevicePreferences
         {
             CameraDeviceId = await localStorage.GetAsync<string>("CameraDeviceId");
         }
+
+        if (await localStorage.ContainsKeyAsync(ErrorReportingEnabledStorageKey))
+        {
+            ErrorReportingEnabled = await localStorage.GetAsync<bool>(ErrorReportingEnabledStorageKey);
+        }
+        else
+        {
+            ErrorReportingEnabled = false;
+        }
+
+        SentryGate.IsEnabled = ErrorReportingEnabled;
 
         // Reload Markdig pipeline
         MarkdownManager.RegenPipeline();

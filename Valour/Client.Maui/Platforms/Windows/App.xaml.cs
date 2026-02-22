@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using WinUiControls = Microsoft.UI.Xaml.Controls;
 using H.NotifyIcon;
+using Sentry;
 using System.Diagnostics;
 using System.Threading;
 
@@ -23,6 +24,7 @@ public partial class App : MauiWinUIApplication
     public App()
     {
         this.InitializeComponent();
+        RegisterExceptionHandlers();
     }
 
     protected override MauiApp CreateMauiApp() => MauiProgram.CreateMauiApp();
@@ -339,5 +341,51 @@ public partial class App : MauiWinUIApplication
         public event EventHandler? CanExecuteChanged;
         public bool CanExecute(object? parameter) => true;
         public void Execute(object? parameter) => _execute();
+    }
+
+    private void RegisterExceptionHandlers()
+    {
+        UnhandledException += (_, e) =>
+        {
+            try
+            {
+                if (e.Exception is not null)
+                {
+                    SentrySdk.CaptureException(e.Exception);
+                }
+            }
+            catch
+            {
+                // Best-effort reporting only.
+            }
+        };
+
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            try
+            {
+                if (e.ExceptionObject is Exception ex)
+                {
+                    SentrySdk.CaptureException(ex);
+                }
+            }
+            catch
+            {
+                // Best-effort reporting only.
+            }
+        };
+
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            try
+            {
+                SentrySdk.CaptureException(e.Exception);
+                e.SetObserved();
+            }
+            catch
+            {
+                // Best-effort reporting only.
+            }
+        };
     }
 }

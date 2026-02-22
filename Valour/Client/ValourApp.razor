@@ -154,12 +154,15 @@ else
 
             if (prefs.ErrorReportingState == ErrorReportingState.All)
             {
-                SentryGate.IsEnabled = true;
+                await DevicePreferences.SetErrorReportingEnabled(true, LocalStorage);
                 return;
             }
 
             if (prefs.ErrorReportingState == ErrorReportingState.None)
+            {
+                await DevicePreferences.SetErrorReportingEnabled(false, LocalStorage);
                 return;
+            }
 
             // State is Unset — prompt the user
             var modalData = new ConfirmModalComponent.ModalParams(
@@ -170,11 +173,12 @@ else
                 async () =>
                 {
                     await Client.PrimaryNode.PostAsync($"api/users/me/preferences/errorReporting/{(int)ErrorReportingState.All}", null);
-                    SentryGate.IsEnabled = true;
+                    await DevicePreferences.SetErrorReportingEnabled(true, LocalStorage);
                 },
                 async () =>
                 {
                     await Client.PrimaryNode.PostAsync($"api/users/me/preferences/errorReporting/{(int)ErrorReportingState.None}", null);
+                    await DevicePreferences.SetErrorReportingEnabled(false, LocalStorage);
                 }
             );
 
