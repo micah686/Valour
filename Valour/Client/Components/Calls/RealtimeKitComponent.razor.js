@@ -261,7 +261,14 @@ async function requestMediaPermissionInternal(canRequestAccess, constraints) {
     try {
         stream = await navigator.mediaDevices.getUserMedia(constraints);
         return true;
-    } catch {
+    } catch (error) {
+        try {
+            const reason = error?.name ? `${error.name}: ${error.message ?? ""}` : String(error);
+            console.warn("Failed to request media permission.", { constraints, reason });
+        } catch {
+            // Ignore console failures.
+        }
+
         return false;
     } finally {
         stopStreamTracks(stream);
