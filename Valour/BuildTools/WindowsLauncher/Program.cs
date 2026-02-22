@@ -38,7 +38,7 @@ internal static class Program
                     catch (Exception ex)
                     {
                         Debug.WriteLine(ex);
-                        statusWindow.SetStatus("Failed to start Valour.");
+                        statusWindow.SetStatus(GetFailureMessage(ex));
                         await Task.Delay(1400).ConfigureAwait(false);
                         exitCode = 1;
                     }
@@ -128,8 +128,13 @@ internal static class Program
             var latestRelease = await FetchLatestReleaseAssetAsync().ConfigureAwait(false);
             if (latestRelease is null)
             {
-                statusWindow?.SetStatus("Could not check updates. Launching cached version.");
-                return fallbackPath;
+                if (HasEmbeddedPayloadTrailer(fallbackPath))
+                {
+                    statusWindow?.SetStatus("Could not check updates. Launching cached version.");
+                    return fallbackPath;
+                }
+
+                throw new InvalidOperationException("No runnable local version is available.");
             }
 
             var cachedReleasePath = GetReleaseExecutablePath(releaseRoot, latestRelease.Tag);
@@ -160,8 +165,13 @@ internal static class Program
         catch (Exception ex)
         {
             Debug.WriteLine(ex);
-            statusWindow?.SetStatus("Using fallback build.");
-            return fallbackPath;
+            if (HasEmbeddedPayloadTrailer(fallbackPath))
+            {
+                statusWindow?.SetStatus("Using fallback build.");
+                return fallbackPath;
+            }
+
+            throw;
         }
     }
 
@@ -238,6 +248,21 @@ internal static class Program
         }
 
         return trimmed;
+    }
+
+    private static string GetFailureMessage(Exception ex)
+    {
+        if (ex is InvalidDataException)
+        {
+            return "Downloaded update is invalid.";
+        }
+
+        if (ex is InvalidOperationException op && !string.IsNullOrWhiteSpace(op.Message))
+        {
+            return op.Message;
+        }
+
+        return "Failed to start Valour.";
     }
 
     private static string SeedReleaseCacheFromCurrent(string currentLauncherPath, string cachedReleasePath)
@@ -362,32 +387,33 @@ internal static class Program
                 statusWindow?.SetStatus("Downloading update...");
             }
 
-            await using var downloadStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-            await using var destinationStream = File.Create(tempPath);
-
-            var buffer = new byte[1024 * 128];
-            long downloaded = 0;
-            var lastPercent = -1;
-
-            while (true)
+            await using (var downloadStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
+            await using (var destinationStream = File.Create(tempPath))
             {
-                var read = await downloadStream.ReadAsync(buffer.AsMemory(0, buffer.Length)).ConfigureAwait(false);
-                if (read <= 0)
-                {
-                    break;
-                }
+                var buffer = new byte[1024 * 128];
+                long downloaded = 0;
+                var lastPercent = -1;
 
-                await destinationStream.WriteAsync(buffer.AsMemory(0, read)).ConfigureAwait(false);
-                downloaded += read;
-
-                if (totalBytes is > 0)
+                while (true)
                 {
-                    var percent = (int)(downloaded * 100 / totalBytes.Value);
-                    percent = Math.Clamp(percent, 0, 100);
-                    if (percent != lastPercent)
+                    var read = await downloadStream.ReadAsync(buffer.AsMemory(0, buffer.Length)).ConfigureAwait(false);
+                    if (read <= 0)
                     {
-                        statusWindow?.SetStatus("Downloading update...", percent);
-                        lastPercent = percent;
+                        break;
+                    }
+
+                    await destinationStream.WriteAsync(buffer.AsMemory(0, read)).ConfigureAwait(false);
+                    downloaded += read;
+
+                    if (totalBytes is > 0)
+                    {
+                        var percent = (int)(downloaded * 100 / totalBytes.Value);
+                        percent = Math.Clamp(percent, 0, 100);
+                        if (percent != lastPercent)
+                        {
+                            statusWindow?.SetStatus("Downloading update...", percent);
+                            lastPercent = percent;
+                        }
                     }
                 }
             }
