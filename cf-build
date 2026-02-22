@@ -1,4 +1,5 @@
 #!/bin/sh
+set -eu
 
 # Install .NET 10 (preview)
 curl -sSL https://dot.net/v1/dotnet-install.sh > dotnet-install.sh
@@ -19,7 +20,21 @@ OUTPUT_DIR=output
 rm -rf "$PUBLISH_DIR" "$OUTPUT_DIR"
 dotnet publish Valour/Client.Blazor/Valour.Client.Blazor.csproj -c Release -o "$PUBLISH_DIR"
 mkdir -p "$OUTPUT_DIR"
-cp -R "$PUBLISH_DIR"/wwwroot/. "$OUTPUT_DIR"/
+
+# Blazor publish output layout can vary by SDK/version. Prefer <publish>/wwwroot,
+# but fall back to the publish root when that is the web root.
+PUBLISH_WEBROOT=""
+if [ -d "$PUBLISH_DIR/wwwroot" ] && [ -e "$PUBLISH_DIR/wwwroot/_framework/blazor.webassembly.js" ]; then
+  PUBLISH_WEBROOT="$PUBLISH_DIR/wwwroot"
+elif [ -e "$PUBLISH_DIR/_framework/blazor.webassembly.js" ]; then
+  PUBLISH_WEBROOT="$PUBLISH_DIR"
+else
+  echo "Could not locate Blazor publish web root in $PUBLISH_DIR"
+  find "$PUBLISH_DIR" -maxdepth 3 -type f | sed -n '1,120p'
+  exit 1
+fi
+
+cp -R "$PUBLISH_WEBROOT"/. "$OUTPUT_DIR"/
 
 # Ensure referenced Razor Class Library assets exist at the expected static-web-assets path.
 # In this project, the host page references `_content/Valour.Client/...` directly.
@@ -34,6 +49,15 @@ printf 'window.valourRuntimeConfig = window.valourRuntimeConfig || {};\nwindow.v
 # The Blazor host page currently lives in the shared Valour.Client project, not Client.Blazor/wwwroot.
 # Ensure Cloudflare Pages has a root index.html to serve.
 cp Valour/Client/wwwroot/index.html "$OUTPUT_DIR"/index.html
+
+# Fail the build if the output is incomplete; otherwise Pages will serve index.html
+# via the SPA fallback and browsers will report MIME type errors for missing assets.
+for required in index.html _framework/blazor.webassembly.js manifest.json service-worker.js; do
+  if [ ! -e "$OUTPUT_DIR/$required" ]; then
+    echo "Missing required output file: $OUTPUT_DIR/$required"
+    exit 1
+  fi
+done
 
 # SPA fallback for client-side routing (prevents refresh/deep-link 404s on Pages).
 printf '/* /index.html 200\n' > "$OUTPUT_DIR/_redirects"
