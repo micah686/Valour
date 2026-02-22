@@ -19,4 +19,10 @@ public class UserPreferences : ISharedUserPreferences
 
     [Column("enabled_notification_sources")]
     public long EnabledNotificationSources { get; set; } = NotificationPreferences.AllNotificationSourcesMask;
+
+    [Column("marketing_email_opt_out")]
+    public bool MarketingEmailOptOut { get; set; } = false;
+
+    [Column("dm_policy")]
+    public DmPolicy DmPolicy { get; set; } = DmPolicy.Everyone;
 }

@@ -123,14 +123,23 @@
     
     public async ValueTask DisposeAsync()
     {
-        // Stop listeners
-        await _jsService.InvokeVoidAsync("stopMoveListener");
-        await _jsService.InvokeVoidAsync("stopUpListener");
-        
+        try
+        {
+            // Stop listeners
+            if (_jsService is not null)
+            {
+                await _jsService.InvokeVoidAsync("stopMoveListener");
+                await _jsService.InvokeVoidAsync("stopUpListener");
+            }
+
+            if (_jsModule is not null) await _jsModule.DisposeAsync();
+            if (_jsService is not null) await _jsService.DisposeAsync();
+        }
+        catch (JSDisconnectedException) { }
+        catch (JSException) { }
+
         _thisRef?.Dispose();
-        if (_jsModule is not null) await _jsModule.DisposeAsync();
-        if (_jsService is not null) await _jsService.DisposeAsync();
-        
+
         // Unsubscribe all
         OnMouseMove = null;
         OnMouseUp = null;

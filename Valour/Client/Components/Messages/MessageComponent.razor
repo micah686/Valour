@@ -35,7 +35,7 @@ else
                     }
                 </style>
             }
-            <div style="background-image: url(@_avatarUrl), url(@_fallbackAvatarUrl)" alt="@_name's profile picture" loading="lazy" class="author-avatar author-avatar-@_user.Id" @onerror="OnAvatarError"></div>
+            <div @onclick="OnClickName" style="background-image: url(@_avatarUrl), url(@_fallbackAvatarUrl)" alt="@_name's profile picture" loading="lazy" class="author-avatar author-avatar-@_user.Id" @onerror="OnAvatarError"></div>
         }
         <div class="time-container">
             <span class="time" title="@_timeTitle">
@@ -58,11 +58,11 @@ else
                 </p>
 
                 <div class="dot-badge-holder">
-                    @if (_user.SubscriptionType == UserSubscriptionTypes.Stargazer.Name)
+                    @if (_user.HasStargazer)
                     {
                         <TooltipTrigger>
                             <ChildContent>
-                                <img alt="Stargazer badge" class="dot-badge" src="_content/Valour.Client/media/stargazer-badge.svg" />
+                                <img alt="Stargazer badge" class="dot-badge" src="@StarBadge.GetDataUri(_user.Id, _user.GetStarColor1(), _user.GetStarColor2())" />
                             </ChildContent>
                             <TooltipContent>
                                 <span>Stargazer</span>
@@ -75,6 +75,14 @@ else
                     } else if (_user.Id <= 42076534464053248)
                     {
                         <span class="badge-1k">10k</span>
+                    }
+                    @if (_user.Bot)
+                    {
+                        <p class="user-badge bot">BOT</p>
+                    }
+                    @if (_user.ValourStaff)
+                    {
+                        <p class="user-badge staff">STAFF</p>
                     }
                 </div>
 
@@ -812,7 +820,7 @@ else
     {
         if (_author is not null)
         {
-            _author.GetFailedAvatar();
+            return _author.GetFailedAvatar();
         }
         
         return ISharedUser.DefaultAvatar;

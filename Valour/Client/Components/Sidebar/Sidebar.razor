@@ -106,11 +106,16 @@
 	
 	async ValueTask IAsyncDisposable.DisposeAsync()
 	{
-		if (_jsModule is not null)
+		try
 		{
-			await _jsModule.InvokeVoidAsync("cleanup");
-			await _jsModule.DisposeAsync();
+			if (_jsModule is not null)
+			{
+				await _jsModule.InvokeVoidAsync("cleanup");
+				await _jsModule.DisposeAsync();
+			}
 		}
+		catch (JSDisconnectedException) { }
+		catch (JSException) { }
 
 		_thisRef?.Dispose();
 		OnToggleMobileSidebar -= OnOpenTabClicked;
@@ -131,7 +136,10 @@
 	
 	public static async Task ToggleSidebar()
 	{
-		await _mainSidebar._jsRef.InvokeVoidAsync("toggleOpen");
+		if (_mainSidebar is null)
+			return;
+
+		await _mainSidebar.InvokeAsync(_mainSidebar.OnOpenTabClicked);
 	}
 
 	private async Task OnOpenTabClicked()
@@ -139,6 +147,8 @@
 		if (!DeviceInfo.IsMobile)
 		{
 			_active = !_active;
+			if (_jsRef is not null)
+				await _jsRef.InvokeVoidAsync("clearInlineTransform");
 			StateHasChanged();
 		}
 		else

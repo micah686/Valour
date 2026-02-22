@@ -158,6 +158,7 @@ public class PlanetService : ServiceBase
             data.Roles.SyncAll(_client);
             data.Channels.SyncAll(_client);
             data.Emojis?.SyncAll(_client);
+            _client.VoiceStateService.SetInitialVoiceState(data.VoiceParticipants);
         }
         
         return result.WithoutData();
@@ -473,10 +474,22 @@ public class PlanetService : ServiceBase
         return result;
     }
 
-    public Task<TaskResult<PlanetMember>> JoinPlanetAsync(long planetId, string inviteCode)
+    public async Task<TaskResult<PlanetMember>> JoinPlanetAsync(long planetId, string inviteCode)
     {
-        return _client.PrimaryNode.PostAsyncWithResponse<PlanetMember>(
+        var result = await _client.PrimaryNode.PostAsyncWithResponse<PlanetMember>(
             $"api/planets/{planetId}/join?inviteCode={inviteCode}");
+
+        if (result.Success)
+        {
+            var planet = await FetchPlanetAsync(planetId);
+            if (planet != null)
+            {
+                planet.Sync(_client);
+                AddJoinedPlanet(planet);
+            }
+        }
+
+        return result;
     }
 
     /// <summary>
